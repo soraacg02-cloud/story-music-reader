@@ -418,34 +418,6 @@ if has_cloud:
                 # ---------------- 側邊欄區域 ----------------
                 st.sidebar.divider()
 
-                # 【重點新增】：在左側欄加入「快速切換書籍」下拉選單
-                st.sidebar.header("📚 快速切換書籍")
-                all_book_names = list(book_options_map.keys())
-                current_book_idx = (
-                    all_book_names.index(book_name)
-                    if book_name in all_book_names
-                    else 0
-                )
-                selected_target_book = st.sidebar.selectbox(
-                    "選擇其他書籍：",
-                    all_book_names,
-                    index=current_book_idx,
-                    key="sidebar_book_switch",
-                )
-                # 當選取的書籍與目前不同時，切換並重整
-                if (
-                    book_options_map.get(selected_target_book)
-                    != st.session_state.selected_book_id
-                ):
-                    st.session_state.selected_book_id = book_options_map[
-                        selected_target_book
-                    ]
-                    st.session_state.ch_index = 0
-                    st.session_state.reading_pct = 0
-                    st.rerun()
-
-                st.sidebar.divider()
-
                 st.sidebar.header(f"🖼️ {book_name}")
                 reading_cover_url = cover_map.get(book_name)
                 if reading_cover_url:
@@ -514,7 +486,33 @@ if has_cloud:
 
                 st.sidebar.divider()
 
+                # 【重點修改】：將「快速切換書籍」整合到「控制面板」區域中
                 st.sidebar.header("🎛️ 控制面板")
+                
+                all_book_names = list(book_options_map.keys())
+                if all_book_names:
+                    current_book_idx = (
+                        all_book_names.index(book_name)
+                        if book_name in all_book_names
+                        else 0
+                    )
+                    selected_target_book = st.sidebar.selectbox(
+                        "📚 快速切換書籍：",
+                        all_book_names,
+                        index=current_book_idx,
+                        key="sidebar_book_switch",
+                    )
+                    if (
+                        book_options_map.get(selected_target_book)
+                        != st.session_state.selected_book_id
+                    ):
+                        st.session_state.selected_book_id = book_options_map[
+                            selected_target_book
+                        ]
+                        st.session_state.ch_index = 0
+                        st.session_state.reading_pct = 0
+                        st.rerun()
+
                 if st.sidebar.button(
                     "📚 返回圖書總書櫃", use_container_width=True
                 ):
