@@ -9,12 +9,12 @@ import docx
 import requests
 import streamlit as st
 
-# 1. 頁面基本配置（支援手機自適應滿版）
+# 1. 頁面基本配置
 st.set_page_config(
     page_title="雲端沉浸式故事音樂書櫃", page_icon="📚", layout="wide"
 )
 
-# 2. Session State 記憶狀態初始化
+# 2. Session State 初始化
 if "selected_book_id" not in st.session_state:
     st.session_state.selected_book_id = None
 if "ch_index" not in st.session_state:
@@ -22,7 +22,7 @@ if "ch_index" not in st.session_state:
 if "theme_mode" not in st.session_state:
     st.session_state.theme_mode = "🌙 黑底模式"
 
-# 3. 側邊欄：黑底 / 白底主題切換
+# 3. 側邊欄：主題選擇器
 st.sidebar.header("🎨 視覺風格設定")
 st.session_state.theme_mode = st.sidebar.radio(
     "選擇閱讀配色：",
@@ -31,38 +31,77 @@ st.session_state.theme_mode = st.sidebar.radio(
     key="theme_radio",
 )
 
-# 依據選擇動態注入 CSS 樣式與手機按鈕加大優化
+# 4. 精準注入 CSS 樣式 (解決黑底模式左側欄與按鈕文字不清楚的問題)
 if st.session_state.theme_mode == "🌙 黑底模式":
-    bg_color, text_color, card_bg, border_color = (
-        "#0e1117",
-        "#e0e0e0",
-        "#1f232a",
-        "#30363d",
-    )
+    css_style = """
+    <style>
+        .stApp { background-color: #0e1117 !important; }
+        /* 左側欄背景與文字深色化 */
+        [data-testid="stSidebar"], [data-testid="stSidebarContent"] { 
+            background-color: #161920 !important; 
+        }
+        [data-testid="stSidebar"] *, [data-testid="stSidebar"] label, [data-testid="stSidebar"] p { 
+            color: #f0f2f6 !important; 
+        }
+        /* 內文區域卡片 */
+        div[data-testid="stContainer"] { 
+            background-color: #1f232a !important; 
+            border: 1px solid #30363d !important; 
+            border-radius: 12px; 
+        }
+        /* 按鈕樣式強化：高對比白字與清晰邊框 */
+        div.stButton > button { 
+            background-color: #262c36 !important; 
+            color: #ffffff !important; 
+            border: 1px solid #4f5866 !important; 
+            font-weight: bold !important;
+            min-height: 44px !important;
+            border-radius: 8px !important;
+        }
+        div.stButton > button:disabled { 
+            background-color: #12151a !important; 
+            color: #555e6d !important; 
+            border: 1px solid #222730 !important; 
+        }
+        p, h1, h2, h3, h4, span, label { color: #e0e0e0 !important; }
+    </style>
+    """
 else:
-    bg_color, text_color, card_bg, border_color = (
-        "#f9f9fb",
-        "#1f232a",
-        "#ffffff",
-        "#e1e4e8",
-    )
+    css_style = """
+    <style>
+        .stApp { background-color: #f9f9fb !important; }
+        [data-testid="stSidebar"], [data-testid="stSidebarContent"] { 
+            background-color: #ffffff !important; 
+        }
+        [data-testid="stSidebar"] *, [data-testid="stSidebar"] label, [data-testid="stSidebar"] p { 
+            color: #1f232a !important; 
+        }
+        div[data-testid="stContainer"] { 
+            background-color: #ffffff !important; 
+            border: 1px solid #e1e4e8 !important; 
+            border-radius: 12px; 
+        }
+        div.stButton > button { 
+            background-color: #ffffff !important; 
+            color: #1f232a !important; 
+            border: 1px solid #c0c4cc !important; 
+            font-weight: bold !important;
+            min-height: 44px !important;
+            border-radius: 8px !important;
+        }
+        div.stButton > button:disabled { 
+            background-color: #f0f2f5 !important; 
+            color: #a8abb2 !important; 
+            border: 1px solid #e4e7ed !important; 
+        }
+        p, h1, h2, h3, h4, span, label { color: #1f232a !important; }
+    </style>
+    """
 
-st.markdown(
-    f"""
-<style>
-    .stApp {{ background-color: {bg_color} !important; }}
-    div[data-testid="stSidebar"] {{ background-color: {card_bg} !important; border-right: 1px solid {border_color}; }}
-    div[data-testid="stContainer"] {{ background-color: {card_bg} !important; border: 1px solid {border_color} !important; border-radius: 12px; padding: 12px; }}
-    p, h1, h2, h3, h4, span, label {{ color: {text_color} !important; }}
-    /* 手機端按鈕加大高度，方便手指舒適點擊 */
-    button {{ min-height: 44px !important; border-radius: 8px !important; }}
-</style>
-""",
-    unsafe_allow_html=True,
-)
+st.markdown(css_style, unsafe_allow_html=True)
 
 
-# 4. 初始化 Cloudinary 連線
+# 5. 初始化 Cloudinary 連線
 def init_cloudinary():
     if "cloudinary" not in st.secrets:
         return False
@@ -76,7 +115,7 @@ def init_cloudinary():
     return True
 
 
-# 5. Word 文件解析器（完整保留留白與標題）
+# 6. Word 文件解析器
 def parse_docx_bytes(file_bytes):
     doc = docx.Document(io.BytesIO(file_bytes))
     chapters = []
@@ -113,45 +152,43 @@ def parse_docx_bytes(file_bytes):
 
 
 has_cloud = init_cloudinary()
-
 st.title("📚 雲端沉浸式故事音樂書櫃")
 
-# 6. 側邊欄控制與新增檔案功能
-if has_cloud:
-    st.sidebar.divider()
-    if not st.session_state.selected_book_id:
-        st.sidebar.header("📤 新增故事入庫")
-        new_file = st.sidebar.file_uploader(
-            "上傳 Word 故事檔 (.docx)", type=["docx"]
-        )
-        if new_file:
-            if st.sidebar.button(
-                "💾 確認存入雲端書櫃", use_container_width=True
-            ):
-                with st.spinner("正在上傳至雲端..."):
-                    try:
-                        safe_filename = quote(new_file.name)
-                        cloudinary.uploader.upload(
-                            new_file,
-                            resource_type="raw",
-                            public_id=f"story_books/{safe_filename}",
-                            overwrite=True,
-                        )
-                        st.sidebar.success(f"《{new_file.name}》已成功收錄！")
-                        st.rerun()
-                    except Exception as e:
-                        st.sidebar.error(f"上傳失敗：{e}")
-
-# 7. 主區域展示
+# 7. 主邏輯區域
 if has_cloud:
     try:
         resources = cloudinary.api.resources(
             type="upload", prefix="story_books/", resource_type="raw"
         )["resources"]
 
-        if resources:
-            # 模式 A：圖書卡片總展覽區
-            if not st.session_state.selected_book_id:
+        # 模式 A：總書櫃頁面
+        if not st.session_state.selected_book_id:
+            st.sidebar.divider()
+            st.sidebar.header("📤 新增故事入庫")
+            new_file = st.sidebar.file_uploader(
+                "上傳 Word 故事檔 (.docx)", type=["docx"]
+            )
+            if new_file:
+                if st.sidebar.button(
+                    "💾 確認存入雲端書櫃", use_container_width=True
+                ):
+                    with st.spinner("正在上傳..."):
+                        try:
+                            safe_filename = quote(new_file.name)
+                            cloudinary.uploader.upload(
+                                new_file,
+                                resource_type="raw",
+                                public_id=f"story_books/{safe_filename}",
+                                overwrite=True,
+                            )
+                            st.sidebar.success(
+                                f"《{new_file.name}》已成功收錄！"
+                            )
+                            st.rerun()
+                        except Exception as e:
+                            st.sidebar.error(f"上傳失敗：{e}")
+
+            if resources:
                 st.header("📖 您的故事書櫃")
                 cols = st.columns(3)
 
@@ -196,125 +233,126 @@ if has_cloud:
                                     st.toast(f"已刪除《{book_title}》")
                                     st.rerun()
 
-            # 模式 B：閱讀器模式（側邊欄懸浮面板 + 內文區）
-            else:
-                selected_res = next(
-                    (
-                        r
-                        for r in resources
-                        if r["public_id"] == st.session_state.selected_book_id
-                    ),
-                    None,
-                )
-                if selected_res:
-                    book_url = selected_res["secure_url"]
-                    book_name = unquote(
-                        selected_res["public_id"].replace("story_books/", "")
-                    )
-
-                    response = requests.get(book_url)
-                    chapters = parse_docx_bytes(response.content)
-                    total_chapters = len(chapters)
-
-                    if st.session_state.ch_index >= total_chapters:
-                        st.session_state.ch_index = 0
-
-                    chapter_titles = [ch["title"] for ch in chapters]
-
-                    # 側邊欄：懸浮控制面板
-                    st.sidebar.header("🎛️ 閱讀控制面板")
-                    if st.sidebar.button(
-                        "📚 返回圖書總書櫃", use_container_width=True
-                    ):
-                        st.session_state.selected_book_id = None
-                        st.rerun()
-
-                    st.sidebar.divider()
-                    st.sidebar.subheader(f"📖 《{book_name}》")
-
-                    selected_ch_title = st.sidebar.selectbox(
-                        "📌 快速選章",
-                        chapter_titles,
-                        index=st.session_state.ch_index,
-                        key="sb_side_select",
-                    )
-                    new_idx = chapter_titles.index(selected_ch_title)
-                    if new_idx != st.session_state.ch_index:
-                        st.session_state.ch_index = new_idx
-                        st.rerun()
-
-                    nav_c1, nav_c2 = st.sidebar.columns(2)
-                    with nav_c1:
-                        if st.button(
-                            "⬅️ 上一章",
-                            disabled=(st.session_state.ch_index <= 0),
-                            use_container_width=True,
-                            key="side_prev",
-                        ):
-                            st.session_state.ch_index -= 1
-                            st.rerun()
-                    with nav_c2:
-                        if st.button(
-                            "下一章 ➡️",
-                            disabled=(
-                                st.session_state.ch_index >= total_chapters - 1
-                            ),
-                            use_container_width=True,
-                            key="side_next",
-                        ):
-                            st.session_state.ch_index += 1
-                            st.rerun()
-
-                    st.sidebar.divider()
-                    current_ch = chapters[st.session_state.ch_index]
-                    st.sidebar.subheader("🎵 章節音樂")
-                    if current_ch["music_url"]:
-                        url = current_ch["music_url"]
-                        if "youtube.com" in url or "youtu.be" in url:
-                            st.sidebar.video(url)
-                        else:
-                            st.sidebar.audio(url)
-                    else:
-                        st.sidebar.caption("本章未設定音樂")
-
-                    # 文章閱讀主區域
-                    st.header(f"《{book_name}》")
-                    st.subheader(current_ch["title"])
-                    st.divider()
-
-                    for line in current_ch["content"]:
-                        if line.strip() == "":
-                            st.markdown("&nbsp;")
-                        else:
-                            st.write(line)
-
-                    st.divider()
-
-                    # 底部快速換章按鈕（貼心服務手機端滑至底部的讀者）
-                    bot_c1, bot_c2 = st.columns(2)
-                    with bot_c1:
-                        if st.button(
-                            "⬅️ 上一章",
-                            disabled=(st.session_state.ch_index <= 0),
-                            use_container_width=True,
-                            key="bot_prev",
-                        ):
-                            st.session_state.ch_index -= 1
-                            st.rerun()
-                    with bot_c2:
-                        if st.button(
-                            "下一章 ➡️",
-                            disabled=(
-                                st.session_state.ch_index >= total_chapters - 1
-                            ),
-                            use_container_width=True,
-                            key="bot_next",
-                        ):
-                            st.session_state.ch_index += 1
-                            st.rerun()
-
+        # 模式 B：故事閱讀器頁面
         else:
-            st.info("📚 雲端書櫃目前是空的，請在上傳區存入故事！")
+            selected_res = next(
+                (
+                    r
+                    for r in resources
+                    if r["public_id"] == st.session_state.selected_book_id
+                ),
+                None,
+            )
+            if selected_res:
+                book_url = selected_res["secure_url"]
+                book_name = unquote(
+                    selected_res["public_id"].replace("story_books/", "")
+                )
+
+                response = requests.get(book_url)
+                chapters = parse_docx_bytes(response.content)
+                total_chapters = len(chapters)
+
+                if st.session_state.ch_index >= total_chapters:
+                    st.session_state.ch_index = 0
+
+                chapter_titles = [ch["title"] for ch in chapters]
+                current_ch = chapters[st.session_state.ch_index]
+
+                # 側邊欄：導航與選項選單
+                st.sidebar.divider()
+                st.sidebar.header("🎛️ 閱讀控制面板")
+                if st.sidebar.button(
+                    "📚 返回圖書總書櫃", use_container_width=True
+                ):
+                    st.session_state.selected_book_id = None
+                    st.rerun()
+
+                st.sidebar.subheader(f"📖 《{book_name}》")
+                selected_ch_title = st.sidebar.selectbox(
+                    "📌 快速選章",
+                    chapter_titles,
+                    index=st.session_state.ch_index,
+                    key="sb_side_select",
+                )
+                new_idx = chapter_titles.index(selected_ch_title)
+                if new_idx != st.session_state.ch_index:
+                    st.session_state.ch_index = new_idx
+                    st.rerun()
+
+                # ---------------- 文章閱讀主區域 ----------------
+                st.header(f"《{book_name}》")
+                st.subheader(current_ch["title"])
+
+                # 需求修正：背景音樂緊湊地放置在章節標題最上方（不佔用巨大影片圖）
+                if current_ch["music_url"]:
+                    url = current_ch["music_url"]
+                    if "youtube.com" in url or "youtu.be" in url:
+                        st.video(url)
+                    else:
+                        st.audio(url)
+                else:
+                    st.caption("🎵 本章節未設定背景音樂")
+
+                st.divider()
+
+                # 頂部導航按鈕
+                top_c1, top_c2 = st.columns(2)
+                with top_c1:
+                    if st.button(
+                        "⬅️ 上一章",
+                        disabled=(st.session_state.ch_index <= 0),
+                        use_container_width=True,
+                        key="top_prev",
+                    ):
+                        st.session_state.ch_index -= 1
+                        st.rerun()
+                with top_c2:
+                    if st.button(
+                        "下一章 ➡️",
+                        disabled=(
+                            st.session_state.ch_index >= total_chapters - 1
+                        ),
+                        use_container_width=True,
+                        key="top_next",
+                    ):
+                        st.session_state.ch_index += 1
+                        st.rerun()
+
+                st.divider()
+
+                # 文章段落還原
+                for line in current_ch["content"]:
+                    if line.strip() == "":
+                        st.markdown("&nbsp;")
+                    else:
+                        st.write(line)
+
+                st.divider()
+
+                # 底部導航按鈕
+                bot_c1, bot_c2 = st.columns(2)
+                with bot_c1:
+                    if st.button(
+                        "⬅️ 上一章",
+                        disabled=(st.session_state.ch_index <= 0),
+                        use_container_width=True,
+                        key="bot_prev",
+                    ):
+                        st.session_state.ch_index -= 1
+                        st.rerun()
+                with bot_c2:
+                    if st.button(
+                        "下一章 ➡️",
+                        disabled=(
+                            st.session_state.ch_index >= total_chapters - 1
+                        ),
+                        use_container_width=True,
+                        key="bot_next",
+                    ):
+                        st.session_state.ch_index += 1
+                        st.rerun()
+
     except Exception as e:
         st.error(f"連線至雲端書櫃時發生錯誤：{e}")
 else:
