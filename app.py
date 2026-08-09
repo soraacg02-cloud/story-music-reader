@@ -217,6 +217,7 @@ if has_cloud:
         resources = cloudinary.api.resources(
             type="upload", prefix="story_books/", resource_type="raw"
         )["resources"]
+        cloud_name_str = st.secrets["cloudinary"].get("cloud_name", "")
 
         # ---------------- 模式 A：總書櫃頁面 ----------------
         if not st.session_state.selected_book_id:
@@ -236,14 +237,12 @@ if has_cloud:
                     with st.spinner("正在上傳故事與封面..."):
                         try:
                             safe_filename = quote(new_file.name)
-                            # 1. 上傳 Word 故事檔
                             cloudinary.uploader.upload(
                                 new_file,
                                 resource_type="raw",
                                 public_id=f"story_books/{safe_filename}",
                                 overwrite=True,
                             )
-                            # 2. 如果有上傳封面，則同步上傳至圖片專用資料夾
                             if cover_file:
                                 cloudinary.uploader.upload(
                                     cover_file,
@@ -261,7 +260,6 @@ if has_cloud:
             if resources:
                 st.header("📖 您的故事書櫃")
                 cols = st.columns(3)
-                cloud_name_str = st.secrets["cloudinary"].get("cloud_name", "")
 
                 for idx, res in enumerate(resources):
                     col = cols[idx % 3]
@@ -355,6 +353,47 @@ if has_cloud:
                 # ---------------- 側邊欄區域 ----------------
                 st.sidebar.divider()
 
+                # 【順序 1.5】：在閱讀時顯示書籍封面，並提供覆蓋/補上傳/刪除封面的功能
+                st.sidebar.header("🖼️ 書籍封面管理")
+                current_cover_url = f"https://res.cloudinary.com/{cloud_name_str}/image/upload/story_covers/{quote(book_name)}"
+                try:
+                    st.sidebar.image(current_cover_url, use_container_width=True)
+                except Exception:
+                    st.sidebar.caption("📷 尚無封面圖片")
+
+                with st.sidebar.expander("⚙️ 變更或刪除封面"):
+                    edit_cover_file = st.file_uploader(
+                        "上傳/覆蓋封面圖片", type=["png", "jpg", "jpeg"], key="edit_cover"
+                    )
+                    c_col1, c_col2 = st.columns(2)
+                    with c_col1:
+                        if st.button("💾 儲存封面", use_container_width=True):
+                            if edit_cover_file:
+                                with st.spinner("更新封面中..."):
+                                    cloudinary.uploader.upload(
+                                        edit_cover_file,
+                                        resource_type="image",
+                                        public_id=f"story_covers/{quote(book_name)}",
+                                        overwrite=True,
+                                    )
+                                    st.success("封面更新成功！")
+                                    st.rerun()
+                            else:
+                                st.warning("請先選擇圖片檔案")
+                    with c_col2:
+                        if st.button("🗑️ 刪除封面", use_container_width=True):
+                            try:
+                                cloudinary.uploader.destroy(
+                                    f"story_covers/{quote(book_name)}",
+                                    resource_type="image",
+                                )
+                                st.toast("封面已刪除")
+                                st.rerun()
+                            except Exception as e:
+                                st.error(f"刪除失敗：{e}")
+
+                st.sidebar.divider()
+
                 # 【順序 2】：音樂盒
                 st.sidebar.header("🎵 音樂盒")
                 render_music_player(
@@ -425,7 +464,6 @@ if has_cloud:
                     st.rerun()
 
                 # ---------------- 文章閱讀主區域 ----------------
-                # 當百分比歸零時，自動透過 JavaScript 平滑捲動回頁面最頂端
                 if pct_value == 0:
                     st.components.v1.html(
                         """
@@ -438,7 +476,6 @@ if has_cloud:
 
                 st.header(f"《{book_name}》")
 
-                # 自動播放開關
                 with st.container(border=True):
                     st.session_state.auto_play = st.toggle(
                         "▶️ 切換章節自動播放音樂", value=st.session_state.auto_play
@@ -447,7 +484,6 @@ if has_cloud:
                 st.subheader(current_ch["title"])
                 st.divider()
 
-                # 頂部導航按鈕
                 top_c1, top_c2 = st.columns(2)
                 with top_c1:
                     st.button(
@@ -470,7 +506,6 @@ if has_cloud:
 
                 st.divider()
 
-                # 完整保留所有段落，並透過 HTML Anchor 錨點平滑捲動到對應百分比位置
                 for idx, line in enumerate(content_lines):
                     anchor_html = f'<div id="line-anchor-{idx}"></div>'
                     st.markdown(anchor_html, unsafe_allow_html=True)
@@ -494,7 +529,6 @@ if has_cloud:
 
                 st.divider()
 
-                # 底部導航按鈕
                 bot_c1, bot_c2 = st.columns(2)
                 with bot_c1:
                     st.button(
