@@ -39,7 +39,7 @@ st.session_state.theme_mode = st.sidebar.radio(
     key="theme_radio",
 )
 
-# 3. 高對比度與主題顏色 CSS 設定
+# 3. 高對比度與主題顏色 CSS 設定 (包含手機版與黑底模式下側邊欄選單文字強化)
 if st.session_state.theme_mode == "🌙 黑底模式":
     bg_col, sidebar_bg, card_bg, border_col, text_col, button_bg = (
         "#0e1117",
@@ -70,7 +70,9 @@ css_style = f"""
         border: 1px solid {border_col} !important;
         border-radius: 12px !important;
     }}
-    div[data-testid="stPopoverBody"] * {{ color: {text_col} !important; }}
+    div[data-testid="stPopoverBody"] *, div[data-testid="stPopoverBody"] label {{ 
+        color: {text_col} !important; 
+    }}
 
     div[data-testid="stContainer"] {{ 
         background-color: {card_bg} !important; 
