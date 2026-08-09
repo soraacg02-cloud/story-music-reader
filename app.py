@@ -1,4 +1,5 @@
 import io
+from datetime import datetime
 from urllib.parse import quote, unquote
 import cloudinary
 import cloudinary.api
@@ -13,14 +14,24 @@ st.set_page_config(
 )
 st.title("📚 雲端沉浸式故事音樂書櫃")
 
+
 # 2. 初始化 Cloudinary 連線
-if "cloudinary" in st.secrets:
+def init_cloudinary():
+    if "cloudinary" not in st.secrets:
+        return False
+    cfg = st.secrets["cloudinary"]
     cloudinary.config(
-        cloud_name=st.secrets["cloudinary"]["cloud_name"],
-        api_key=str(st.secrets["cloudinary"]["api_key"]),
-        api_secret=str(st.secrets["cloudinary"]["api_secret"]),
+        cloud_name=str(cfg.get("cloud_name", "")).strip(),
+        api_key=str(cfg.get("api_key", "")).strip(),
+        api_secret=str(cfg.get("api_secret", "")).strip(),
         secure=True,
     )
+    return True
+
+
+# 3. 初始化紀錄目前閱讀書籍的狀態機 (Session State)
+if "selected_book_id" not in st.session_state:
+    st.session_state.selected_book_id = None
 
 
 def parse_docx_bytes(file_bytes):
@@ -33,7 +44,6 @@ def parse_docx_bytes(file_bytes):
         text = p.text.rstrip()
         style_name = p.style.name.lower()
 
-        # 判定標題樣式
         is_heading = (
             "heading" in style_name or "標題" in style_name
         ) and text.strip() != ""
@@ -61,81 +71,138 @@ def parse_docx_bytes(file_bytes):
     return chapters
 
 
-# 3. 側邊欄：新增故事入庫 (加入 safe_filename 防止中文編碼錯誤)
+has_cloud = init_cloudinary()
+
+# 4. 側邊欄：新增故事入庫
 st.sidebar.header("📤 新增故事入庫")
 new_file = st.sidebar.file_uploader("上傳 Word 故事檔 (.docx)", type=["docx"])
 
-if new_file and "cloudinary" in st.secrets:
+if new_file and has_cloud:
     if st.sidebar.button("💾 確認存入雲端書櫃"):
         with st.spinner("正在上傳至雲端書櫃..."):
-            # 關鍵修正：使用 quote 將中文檔名編碼成 ASCII 安全字元
-            safe_filename = quote(new_file.name)
-            cloudinary.uploader.upload(
-                new_file,
-                resource_type="raw",
-                public_id=f"story_books/{safe_filename}",
-                overwrite=True,
-            )
-            st.sidebar.success(f"《{new_file.name}》已成功收錄進書櫃！")
+            try:
+                safe_filename = quote(new_file.name)
+                cloudinary.uploader.upload(
+                    new_file,
+                    resource_type="raw",
+                    public_id=f"story_books/{safe_filename}",
+                    overwrite=True,
+                )
+                st.sidebar.success(f"《{new_file.name}》已成功收錄進書櫃！")
+                st.rerun()
+            except Exception as e:
+                st.sidebar.error(f"上傳失敗：{e}")
 
-# 4. 主頁面：雲端書櫃選單
-st.sidebar.divider()
-st.sidebar.header("📖 您的雲端書櫃")
+# 5. 主區域：格子卡片展示區
+st.header("📖 您的雲端故事書櫃")
 
-if "cloudinary" in st.secrets:
+if has_cloud:
     try:
-        # 向 Cloudinary 查詢 story_books/ 目錄下的所有書籍
+        # 向 Cloudinary 索取檔案清單
         resources = cloudinary.api.resources(
             type="upload", prefix="story_books/", resource_type="raw"
         )["resources"]
 
         if resources:
-            # 關鍵修正：解開 unquote 編碼，讓選單完美顯示原本的中文檔名
-            book_options = {
-                unquote(res["public_id"].replace("story_books/", "")): res[
-                    "secure_url"
-                ]
-                for res in resources
-            }
-            selected_book_name = st.sidebar.selectbox(
-                "請選擇想閱讀的故事書", list(book_options.keys())
-            )
+            # 建立三欄排版的網格卡片區 (Grid Columns)
+            cols = st.columns(3)
 
-            if selected_book_name:
-                book_url = book_options[selected_book_name]
-                response = requests.get(book_url)
+            for idx, res in enumerate(resources):
+                col = cols[idx % 3]  # 依序放進第 1、2、3 欄
+                public_id = res["public_id"]
+                raw_title = public_id.replace("story_books/", "")
+                book_title = unquote(raw_title)
 
-                # 解析並呈現故事
-                chapters = parse_docx_bytes(response.content)
+                # 解析並格式化上傳時間
+                created_at_str = res.get("created_at", "")
+                if created_at_str:
+                    dt = datetime.strptime(
+                        created_at_str, "%Y-%m-%dT%H:%M:%SZ"
+                    )
+                    date_display = dt.strftime("%Y-%m-%d %H:%M")
+                else:
+                    date_display = "未知時間"
 
-                chapter_titles = [ch["title"] for ch in chapters]
-                selected_ch_title = st.selectbox(
-                    "📌 請選擇章節", chapter_titles
+                with col:
+                    # 使用帶邊框的容器打造「卡片」視覺效果
+                    with st.container(border=True):
+                        st.subheader(f"📘 {book_title}")
+                        st.caption(f"📅 上傳時間：{date_display}")
+
+                        b_col1, b_col2 = st.columns([2, 1])
+                        with b_col1:
+                            if st.button(
+                                "📖 點擊閱讀", key=f"read_{public_id}"
+                            ):
+                                st.session_state.selected_book_id = public_id
+                                st.rerun()
+
+                        with b_col2:
+                            if st.button("🗑️ 刪除", key=f"del_{public_id}"):
+                                cloudinary.uploader.destroy(
+                                    public_id, resource_type="raw"
+                                )
+                                # 若刪除的是當前正閱讀的書，重置閱讀狀態
+                                if (
+                                    st.session_state.selected_book_id
+                                    == public_id
+                                ):
+                                    st.session_state.selected_book_id = None
+                                st.toast(f"已從雲端刪除《{book_title}》")
+                                st.rerun()
+
+            st.divider()
+
+            # 6. 當使用者點擊卡片的「閱讀」時，下方渲染章節與故事
+            if st.session_state.selected_book_id:
+                selected_res = next(
+                    (
+                        r
+                        for r in resources
+                        if r["public_id"] == st.session_state.selected_book_id
+                    ),
+                    None,
                 )
-                current_ch = next(
-                    ch for ch in chapters if ch["title"] == selected_ch_title
-                )
+                if selected_res:
+                    book_url = selected_res["secure_url"]
+                    book_name = unquote(
+                        selected_res["public_id"].replace("story_books/", "")
+                    )
 
-                st.divider()
-                st.header(current_ch["title"])
+                    st.subheader(f"📖 當前正在閱讀：《{book_name}》")
+                    response = requests.get(book_url)
+                    chapters = parse_docx_bytes(response.content)
 
-                # 背景音樂播放器
-                if current_ch["music_url"]:
-                    url = current_ch["music_url"]
-                    if "youtube.com" in url or "youtu.be" in url:
-                        st.video(url)
-                    else:
-                        st.audio(url)
-                    st.success("🎵 背景音樂載入成功！")
+                    chapter_titles = [ch["title"] for ch in chapters]
+                    selected_ch_title = st.selectbox(
+                        "📌 請選擇章節", chapter_titles
+                    )
+                    current_ch = next(
+                        ch
+                        for ch in chapters
+                        if ch["title"] == selected_ch_title
+                    )
 
-                st.divider()
+                    st.divider()
+                    st.header(current_ch["title"])
 
-                # 還原排版與段落留白
-                for line in current_ch["content"]:
-                    if line.strip() == "":
-                        st.markdown("&nbsp;")
-                    else:
-                        st.write(line)
+                    # 背景音樂播放器
+                    if current_ch["music_url"]:
+                        url = current_ch["music_url"]
+                        if "youtube.com" in url or "youtu.be" in url:
+                            st.video(url)
+                        else:
+                            st.audio(url)
+                        st.success("🎵 背景音樂載入成功！")
+
+                    st.divider()
+
+                    # 還原排版與段落留白
+                    for line in current_ch["content"]:
+                        if line.strip() == "":
+                            st.markdown("&nbsp;")
+                        else:
+                            st.write(line)
         else:
             st.info("📚 雲端書櫃目前是空的，請在左側上傳您的第一本故事書！")
     except Exception as e:
