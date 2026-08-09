@@ -186,7 +186,27 @@ def parse_docx_bytes(file_bytes):
 def render_music_player(music_url, is_autoplay):
     if music_url:
         if "youtube.com" in music_url or "youtu.be" in music_url:
-            st.sidebar.video(music_url, autoplay=is_autoplay)
+            vid_match = re.search(r"(?:v=|be/|embed/)([\w-]+)", music_url)
+            time_match = re.search(r"[?&](?:t|start)=(\d+)s?", music_url)
+            
+            if vid_match:
+                vid = vid_match.group(1)
+                embed_url = f"https://www.youtube.com/embed/{vid}"
+                params = []
+                if time_match:
+                    params.append(f"start={time_match.group(1)}")
+                if is_autoplay:
+                    params.append("autoplay=1")
+                
+                if params:
+                    embed_url += "?" + "&".join(params)
+                    
+                st.sidebar.markdown(
+                    f'<iframe width="100%" height="200" src="{embed_url}" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowfullscreen></iframe>',
+                    unsafe_allow_html=True
+                )
+            else:
+                st.sidebar.video(music_url, autoplay=is_autoplay)
         else:
             st.sidebar.audio(music_url, autoplay=is_autoplay)
     else:
