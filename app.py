@@ -175,15 +175,15 @@ def parse_docx_bytes(file_bytes):
     return chapters
 
 
-# 8. 音樂播放器輔助函式
+# 8. 音樂播放器輔助函式（專收納於左側邊欄）
 def render_music_player(music_url, is_autoplay):
     if music_url:
         if "youtube.com" in music_url or "youtu.be" in music_url:
-            st.video(music_url, autoplay=is_autoplay)
+            st.sidebar.video(music_url, autoplay=is_autoplay)
         else:
-            st.audio(music_url, autoplay=is_autoplay)
+            st.sidebar.audio(music_url, autoplay=is_autoplay)
     else:
-        st.caption("🎵 本章節未設定背景音樂")
+        st.sidebar.caption("🎵 本章節未設定背景音樂")
 
 
 has_cloud = init_cloudinary()
@@ -294,7 +294,7 @@ if has_cloud:
                 chapter_titles = [ch["title"] for ch in chapters]
                 current_ch = chapters[st.session_state.ch_index]
 
-                # 側邊欄懸浮控制區
+                # 側邊欄懸浮控制區（音樂播放器專屬位置）
                 st.sidebar.divider()
                 st.sidebar.header("🎛️ 閱讀控制面板")
                 if st.sidebar.button(
@@ -305,7 +305,7 @@ if has_cloud:
 
                 st.sidebar.subheader(f"📖 《{book_name}》")
 
-                # 需求調整 1：將「🎵 懸浮音樂控制箱」收納在側邊欄懸浮控制面板中
+                # 【1】音樂播放區：嚴格歸位於左側邊欄
                 st.sidebar.subheader("🎵 懸浮音樂控制箱")
                 render_music_player(
                     current_ch["music_url"], st.session_state.auto_play
@@ -352,11 +352,15 @@ if has_cloud:
                 # ---------------- 文章閱讀主區域 ----------------
                 st.header(f"《{book_name}》")
 
-                # 需求調整 2：將「▶️ 切換章節自動播放」移至主閱讀區最上方
+                # 【2】主要閱讀區最上方：僅放自動播放開關與手機貼心提示
                 with st.container(border=True):
                     st.session_state.auto_play = st.toggle(
                         "▶️ 切換章節自動播放音樂", value=st.session_state.auto_play
                     )
+                    if st.session_state.auto_play:
+                        st.caption(
+                            "📱 **手機讀者小提示**：受限於手機系統安全機制，跨頁切換後若音樂未自動響起，只需拉開左側選單點擊一次播放按鈕即可！"
+                        )
 
                 st.subheader(current_ch["title"])
                 st.divider()
@@ -380,7 +384,6 @@ if has_cloud:
                         use_container_width=True,
                         key="top_next",
                         on_click=next_chapter_cb,
-                        args=(total_chapters,),
                     )
 
                 st.divider()
@@ -413,7 +416,6 @@ if has_cloud:
                         use_container_width=True,
                         key="bot_next",
                         on_click=next_chapter_cb,
-                        args=(total_chapters,),
                     )
 
     except Exception as e:
