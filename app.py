@@ -47,7 +47,6 @@ if st.session_state.theme_mode == "🌙 黑底模式":
         "#e0e0e0",
         "#262c36",
     )
-    bar_bg, bar_fill = "#333945", "linear-gradient(90deg, #4facfe, #00f2fe)"
 else:
     bg_col, sidebar_bg, card_bg, border_col, text_col, button_bg = (
         "#f9f9fb",
@@ -57,7 +56,6 @@ else:
         "#1f232a",
         "#ffffff",
     )
-    bar_bg, bar_fill = "#e0e4ec", "linear-gradient(90deg, #36d1dc, #5b86e5)"
 
 css_style = f"""
 <style>
@@ -107,7 +105,7 @@ def init_cloudinary():
     return True
 
 
-# 5. 安全無參數回呼函式 (Parameterless Callbacks)
+# 5. 安全無參數回呼函式
 def prev_chapter_cb():
     if st.session_state.ch_index > 0:
         st.session_state.ch_index -= 1
@@ -184,18 +182,6 @@ if has_cloud:
 
         # ---------------- 模式 A：總書櫃頁面 ----------------
         if not st.session_state.selected_book_id:
-            # 清除可能殘留的懸浮頂層進度條
-            st.components.v1.html(
-                """
-            <script>
-                const pDoc = window.parent.document;
-                const oldBar = pDoc.getElementById("parent-sticky-bar");
-                if (oldBar) oldBar.remove();
-            </script>
-            """,
-                height=0,
-            )
-
             st.sidebar.divider()
             st.sidebar.header("📤 新增故事入庫")
             new_file = st.sidebar.file_uploader(
@@ -349,91 +335,6 @@ if has_cloud:
                     st.rerun()
 
                 # ---------------- 文章閱讀主區域 ----------------
-                # 關鍵技術：使用 window.parent 穿透，將「可點擊跳轉的進度條」直接注入全螢幕最頂端
-                sticky_interactive_bar_js = f"""
-                <script>
-                    const pDoc = window.parent.document;
-                    const pWin = window.parent;
-
-                    let container = pDoc.getElementById("parent-sticky-bar");
-                    if (!container) {{
-                        container = pDoc.createElement("div");
-                        container.id = "parent-sticky-bar";
-                        container.style.cssText = `
-                            position: fixed;
-                            top: 0;
-                            left: 0;
-                            width: 100%;
-                            z-index: 999999;
-                            background-color: {card_bg};
-                            border-bottom: 1px solid {border_col};
-                            padding: 8px 16px;
-                            display: flex;
-                            align-items: center;
-                            justify-content: space-between;
-                            box-shadow: 0px 4px 12px rgba(0,0,0,0.3);
-                            cursor: pointer;
-                            user-select: none;
-                        `;
-                        
-                        container.innerHTML = `
-                            <div style="font-size: 14px; font-weight: bold; color: {text_col}; min-width: 150px; pointer-events: none;">
-                                📜 閱讀進度：<span id="p-pct-text">0%</span>
-                            </div>
-                            <div id="p-bar-track" style="flex-grow: 1; margin: 0 16px; background-color: {bar_bg}; height: 12px; border-radius: 6px; overflow: hidden; position: relative;">
-                                <div id="p-bar-fill" style="width: 0%; height: 100%; background: {bar_fill}; transition: width 0.05s linear; pointer-events: none;"></div>
-                            </div>
-                            <div style="font-size: 12px; color: {text_col}; opacity: 0.8; pointer-events: none;">
-                                👆 點擊條狀圖即可快速跳轉
-                            </div>
-                        `;
-                        pDoc.body.appendChild(container);
-
-                        // 點擊事件：實現手指點擊進度條即時跳轉文章位置
-                        container.addEventListener('click', function(e) {{
-                            const track = pDoc.getElementById("p-bar-track");
-                            if (!track) return;
-                            const rect = track.getBoundingClientRect();
-                            let clickX = e.clientX - rect.left;
-                            if (clickX < 0) clickX = 0;
-                            if (clickX > rect.width) clickX = rect.width;
-                            
-                            const pct = clickX / rect.width;
-                            const totalH = pDoc.documentElement.scrollHeight - pWin.innerHeight;
-                            
-                            pWin.scrollTo({{
-                                top: totalH * pct,
-                                behavior: 'smooth'
-                            }});
-                        }});
-
-                        // 滾動監聽：滑動頁面時即時更新進度%與長度
-                        function syncScrollProgress() {{
-                            const winScroll = pWin.scrollY || pDoc.documentElement.scrollTop;
-                            const height = pDoc.documentElement.scrollHeight - pWin.innerHeight;
-                            let scrolled = 0;
-                            if (height > 0) {{
-                                scrolled = (winScroll / height) * 100;
-                            }}
-                            if (scrolled < 0) scrolled = 0;
-                            if (scrolled > 100) scrolled = 100;
-                            
-                            const pctText = pDoc.getElementById("p-pct-text");
-                            const pctFill = pDoc.getElementById("p-bar-fill");
-                            if (pctText && pctFill) {{
-                                pctText.innerText = Math.round(scrolled) + "%";
-                                pctFill.style.width = scrolled + "%";
-                            }}
-                        }}
-
-                        pWin.addEventListener('scroll', syncScrollProgress);
-                        pWin.addEventListener('resize', syncScrollProgress);
-                        syncScrollProgress();
-                    }}
-                </script>
-                """
-                st.components.v1.html(sticky_interactive_bar_js, height=0)
-
                 st.header(f"《{book_name}》")
 
                 # 自動播放開關
@@ -443,6 +344,39 @@ if has_cloud:
                     )
 
                 st.subheader(current_ch["title"])
+                st.divider()
+
+                # 關鍵突破：採用 100% 穩定連點跳轉的原生百分比點擊控制器
+                content_lines = current_ch["content"]
+                total_lines = len(content_lines)
+
+                with st.container(border=True):
+                    pct_key = f"pct_jump_{selected_res['public_id']}_{st.session_state.ch_index}"
+
+                    st.markdown("🎯 **閱讀進度與快轉跳轉（%）**")
+                    pct_value = st.slider(
+                        "拖動或點擊下方百分比即可直接跳轉文章位置：",
+                        min_value=0,
+                        max_value=100,
+                        value=0,
+                        step=5,
+                        format="%d%%",
+                        key=pct_key,
+                        help="點擊或滑動滑桿，內文將立即從選定的百分比位置開始呈現",
+                    )
+
+                    # 動態視覺進度條
+                    st.progress(pct_value / 100.0)
+
+                    # 根據選定的百分比換算起始段落索引
+                    start_line_idx = int(total_lines * (pct_value / 100.0))
+                    if start_line_idx >= total_lines:
+                        start_line_idx = max(0, total_lines - 1)
+
+                    st.caption(
+                        f"📍 當前進度：**{pct_value}%** （定位於第 {start_line_idx + 1} / {total_lines} 段）"
+                    )
+
                 st.divider()
 
                 # 頂部導航按鈕
@@ -468,8 +402,9 @@ if has_cloud:
 
                 st.divider()
 
-                # 文章段落渲染
-                for line in current_ch["content"]:
+                # 文章段落渲染（即時呈現從選定百分比開始的文章內容）
+                display_lines = content_lines[start_line_idx:]
+                for line in display_lines:
                     if line.strip() == "":
                         st.markdown("&nbsp;")
                     else:
