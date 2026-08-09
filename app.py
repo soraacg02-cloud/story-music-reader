@@ -182,7 +182,7 @@ def parse_docx_bytes(file_bytes):
     return chapters
 
 
-# 7. 音樂播放器輔助函式（收納於左側邊欄）
+# 7. 音樂播放器輔助函式（支援 YouTube 指定秒數與自動播放）
 def render_music_player(music_url, is_autoplay):
     if music_url:
         if "youtube.com" in music_url or "youtu.be" in music_url:
@@ -486,9 +486,9 @@ if has_cloud:
 
                 st.sidebar.divider()
 
-                # 【重點修改】：將「快速切換書籍」整合到「控制面板」區域中
+                # 控制面板（包含快速切換書籍與返回總書櫃）
                 st.sidebar.header("🎛️ 控制面板")
-                
+
                 all_book_names = list(book_options_map.keys())
                 if all_book_names:
                     current_book_idx = (
