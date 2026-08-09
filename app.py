@@ -489,4 +489,4 @@ if has_cloud:
     except Exception as e:
         st.error(f"連線至雲端書櫃時發生錯誤：{e}")
 else:
-    st.warning("⚠️ 請先在 Streamlit Cloud 設定 Cloudinary API 金鑰。")>>直接用這個修改，然後給我完整版
+    st.warning("⚠️ 請先在 Streamlit Cloud 設定 Cloudinary API 金鑰。")
