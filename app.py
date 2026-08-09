@@ -175,7 +175,7 @@ def parse_docx_bytes(file_bytes):
     return chapters
 
 
-# 8. 音樂播放器輔助函式（已修正：安全移除不支援的 key 參數）
+# 8. 音樂播放器輔助函式
 def render_music_player(music_url, is_autoplay):
     if music_url:
         if "youtube.com" in music_url or "youtu.be" in music_url:
@@ -305,9 +305,14 @@ if has_cloud:
 
                 st.sidebar.subheader(f"📖 《{book_name}》")
 
-                # 自動播放切換開關
+                # 關鍵修改：音樂播放區移至上方，開關移至下方
+                st.sidebar.subheader("🎵 懸浮音樂控制箱")
+                render_music_player(
+                    current_ch["music_url"], st.session_state.auto_play
+                )
+
                 st.session_state.auto_play = st.sidebar.toggle(
-                    "▶️ 切換章節自動播放音樂", value=st.session_state.auto_play
+                    "▶️ 切換章節自動播放", value=st.session_state.auto_play
                 )
 
                 st.sidebar.divider()
@@ -348,17 +353,9 @@ if has_cloud:
                         args=(total_chapters,),
                     )
 
-                # 文章閱讀主區域
+                # ---------------- 文章閱讀主區域 ----------------
                 st.header(f"《{book_name}》")
                 st.subheader(current_ch["title"])
-
-                # 主閱讀區音樂控制卡片（直觀且支援自動播放）
-                with st.container(border=True):
-                    st.markdown("🎧 **本章背景音樂播放區**")
-                    render_music_player(
-                        current_ch["music_url"], st.session_state.auto_play
-                    )
-
                 st.divider()
 
                 # 頂部導航按鈕
