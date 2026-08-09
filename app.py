@@ -14,7 +14,7 @@ st.set_page_config(
     page_title="雲端沉浸式故事音樂書櫃", page_icon="📚", layout="wide"
 )
 
-# 2. Session State 記憶狀態初始化
+# 2. Session State 記憶狀態初始化 (全域共享黑板)
 if "selected_book_id" not in st.session_state:
     st.session_state.selected_book_id = None
 if "ch_index" not in st.session_state:
@@ -119,7 +119,7 @@ def format_file_size(size_in_bytes):
         return f"{size_in_bytes / (1024 * 1024):.2f} MB"
 
 
-# 5. 安全狀態同步回呼函式
+# 5. 安全狀態同步回呼函式 (換章時強制將百分比歸零並回到頂端)
 def prev_chapter_cb():
     if st.session_state.ch_index > 0:
         st.session_state.ch_index -= 1
@@ -334,11 +334,11 @@ if has_cloud:
 
                 st.sidebar.divider()
 
-                # 【順序 3】：章節切換與快轉跳轉進度
+                # 【順序 3】：章節切換與精簡版快轉進度（已移除重複的文字標籤，僅留拉 bar 與動態百分比格式化）
                 st.sidebar.header("📌 章節切換與進度")
                 
                 pct_value = st.sidebar.slider(
-                    "🎯 快轉跳轉 (拖動或點擊 %)：",
+                    "🎯 快轉跳轉：",
                     min_value=0,
                     max_value=100,
                     value=st.session_state.reading_pct,
@@ -348,12 +348,9 @@ if has_cloud:
                     on_change=on_slider_change_cb,
                 )
 
-                # 計算目標錨點 ID
                 target_line_idx = int(total_lines * (pct_value / 100.0))
                 if target_line_idx >= total_lines:
                     target_line_idx = max(0, total_lines - 1)
-
-                st.sidebar.caption(f"📍 當前定位：**{pct_value}%** （第 {target_line_idx + 1}/{total_lines} 段）")
 
                 with st.sidebar.popover(
                     f"跳轉章節：{current_ch['title']}",
@@ -399,6 +396,17 @@ if has_cloud:
                     st.rerun()
 
                 # ---------------- 文章閱讀主區域 ----------------
+                # 當百分比歸零時，自動透過 JavaScript 平滑捲動回頁面最頂端
+                if pct_value == 0:
+                    st.components.v1.html(
+                        """
+                    <script>
+                        window.parent.scrollTo({top: 0, behavior: 'smooth'});
+                    </script>
+                    """,
+                        height=0,
+                    )
+
                 st.header(f"《{book_name}》")
 
                 # 自動播放開關
@@ -433,7 +441,7 @@ if has_cloud:
 
                 st.divider()
 
-                # 關鍵突破：完整渲染所有段落（保留前段內容），並注入 HTML 門牌錨點（Anchor ID）
+                # 完整保留所有段落，並透過 HTML Anchor 錨點平滑捲動到對應百分比位置
                 for idx, line in enumerate(content_lines):
                     anchor_html = f'<div id="line-anchor-{idx}"></div>'
                     st.markdown(anchor_html, unsafe_allow_html=True)
@@ -442,7 +450,6 @@ if has_cloud:
                     else:
                         st.write(line)
 
-                # 關鍵技術：透過 JavaScript 自動將視窗平滑捲動到目標錨點
                 scroll_script = f"""
                 <script>
                     setTimeout(function() {{
