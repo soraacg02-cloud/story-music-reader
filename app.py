@@ -175,17 +175,13 @@ def parse_docx_bytes(file_bytes):
     return chapters
 
 
-# 8. 音樂播放器輔助函式（關鍵修復：加入獨特的 key 參數）
-def render_music_player(music_url, is_autoplay, key_prefix):
+# 8. 音樂播放器輔助函式（已修正：安全移除不支援的 key 參數）
+def render_music_player(music_url, is_autoplay):
     if music_url:
         if "youtube.com" in music_url or "youtu.be" in music_url:
-            st.video(
-                music_url, autoplay=is_autoplay, key=f"{key_prefix}_video"
-            )
+            st.video(music_url, autoplay=is_autoplay)
         else:
-            st.audio(
-                music_url, autoplay=is_autoplay, key=f"{key_prefix}_audio"
-            )
+            st.audio(music_url, autoplay=is_autoplay)
     else:
         st.caption("🎵 本章節未設定背景音樂")
 
@@ -298,7 +294,7 @@ if has_cloud:
                 chapter_titles = [ch["title"] for ch in chapters]
                 current_ch = chapters[st.session_state.ch_index]
 
-                # 側邊欄懸浮控制區（僅在 Mode B 渲染一次）
+                # 側邊欄懸浮控制區
                 st.sidebar.divider()
                 st.sidebar.header("🎛️ 閱讀控制面板")
                 if st.sidebar.button(
@@ -314,17 +310,9 @@ if has_cloud:
                     "▶️ 切換章節自動播放音樂", value=st.session_state.auto_play
                 )
 
-                # 懸浮音樂播放器 (帶有 side 獨立 key)
-                st.sidebar.subheader("🎵 懸浮音樂控制箱")
-                render_music_player(
-                    current_ch["music_url"],
-                    st.session_state.auto_play,
-                    "side",
-                )
-
                 st.sidebar.divider()
 
-                # 氣泡章節跳轉選單
+                # 氣泡章節跳轉選單（手機零鍵盤彈出）
                 with st.sidebar.popover(
                     f"📌 章節跳轉：{current_ch['title']}",
                     use_container_width=True,
@@ -364,13 +352,11 @@ if has_cloud:
                 st.header(f"《{book_name}》")
                 st.subheader(current_ch["title"])
 
-                # 主閱讀區音樂控制卡片 (帶有 main 獨立 key)
+                # 主閱讀區音樂控制卡片（直觀且支援自動播放）
                 with st.container(border=True):
                     st.markdown("🎧 **本章背景音樂播放區**")
                     render_music_player(
-                        current_ch["music_url"],
-                        st.session_state.auto_play,
-                        "main",
+                        current_ch["music_url"], st.session_state.auto_play
                     )
 
                 st.divider()
