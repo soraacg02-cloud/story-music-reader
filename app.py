@@ -22,7 +22,7 @@ if "ch_index" not in st.session_state:
 if "theme_mode" not in st.session_state:
     st.session_state.theme_mode = "🌙 黑底模式"
 if "auto_play" not in st.session_state:
-    st.session_state.auto_play = True  # 預設開啟自動播放
+    st.session_state.auto_play = True
 
 # 3. 側邊欄：視覺風格切換
 st.sidebar.header("🎨 視覺風格設定")
@@ -175,13 +175,17 @@ def parse_docx_bytes(file_bytes):
     return chapters
 
 
-# 8. 音樂播放器輔助函式 (渲染於側邊欄與主要區域)
+# 8. 音樂播放器輔助函式（關鍵修復：加入獨特的 key 參數）
 def render_music_player(music_url, is_autoplay, key_prefix):
     if music_url:
         if "youtube.com" in music_url or "youtu.be" in music_url:
-            st.video(music_url, autoplay=is_autoplay)
+            st.video(
+                music_url, autoplay=is_autoplay, key=f"{key_prefix}_video"
+            )
         else:
-            st.audio(music_url, autoplay=is_autoplay)
+            st.audio(
+                music_url, autoplay=is_autoplay, key=f"{key_prefix}_audio"
+            )
     else:
         st.caption("🎵 本章節未設定背景音樂")
 
@@ -196,7 +200,7 @@ if has_cloud:
             type="upload", prefix="story_books/", resource_type="raw"
         )["resources"]
 
-        # 模式 A：總書櫃頁面
+        # ---------------- 模式 A：總書櫃頁面 ----------------
         if not st.session_state.selected_book_id:
             st.sidebar.divider()
             st.sidebar.header("📤 新增故事入庫")
@@ -268,7 +272,7 @@ if has_cloud:
                                     st.toast(f"已刪除《{book_title}》")
                                     st.rerun()
 
-        # 模式 B：故事閱讀器頁面
+        # ---------------- 模式 B：故事閱讀器頁面 ----------------
         else:
             selected_res = next(
                 (
@@ -294,7 +298,7 @@ if has_cloud:
                 chapter_titles = [ch["title"] for ch in chapters]
                 current_ch = chapters[st.session_state.ch_index]
 
-                # ---------------- 側邊欄懸浮控制區 ----------------
+                # 側邊欄懸浮控制區（僅在 Mode B 渲染一次）
                 st.sidebar.divider()
                 st.sidebar.header("🎛️ 閱讀控制面板")
                 if st.sidebar.button(
@@ -310,7 +314,7 @@ if has_cloud:
                     "▶️ 切換章節自動播放音樂", value=st.session_state.auto_play
                 )
 
-                # 懸浮音樂播放器
+                # 懸浮音樂播放器 (帶有 side 獨立 key)
                 st.sidebar.subheader("🎵 懸浮音樂控制箱")
                 render_music_player(
                     current_ch["music_url"],
@@ -320,7 +324,7 @@ if has_cloud:
 
                 st.sidebar.divider()
 
-                # 章節選擇 popover
+                # 氣泡章節跳轉選單
                 with st.sidebar.popover(
                     f"📌 章節跳轉：{current_ch['title']}",
                     use_container_width=True,
@@ -334,7 +338,7 @@ if has_cloud:
                         args=(chapter_titles,),
                     )
 
-                # 上下章按鈕
+                # 上下章控制按鈕
                 nav_c1, nav_c2 = st.sidebar.columns(2)
                 with nav_c1:
                     st.button(
@@ -356,11 +360,11 @@ if has_cloud:
                         args=(total_chapters,),
                     )
 
-                # ---------------- 文章閱讀主區域 ----------------
+                # 文章閱讀主區域
                 st.header(f"《{book_name}》")
                 st.subheader(current_ch["title"])
 
-                # 主要閱讀區內建的音樂控制列 (直觀可見)
+                # 主閱讀區音樂控制卡片 (帶有 main 獨立 key)
                 with st.container(border=True):
                     st.markdown("🎧 **本章背景音樂播放區**")
                     render_music_player(
