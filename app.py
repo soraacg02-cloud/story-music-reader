@@ -225,21 +225,34 @@ if has_cloud:
             new_file = st.sidebar.file_uploader(
                 "上傳 Word 故事檔 (.docx)", type=["docx"]
             )
+            cover_file = st.sidebar.file_uploader(
+                "上傳書籍封面圖片 (選填)", type=["png", "jpg", "jpeg"]
+            )
+
             if new_file:
                 if st.sidebar.button(
                     "💾 確認存入雲端書櫃", use_container_width=True
                 ):
-                    with st.spinner("正在上傳..."):
+                    with st.spinner("正在上傳故事與封面..."):
                         try:
                             safe_filename = quote(new_file.name)
+                            # 1. 上傳 Word 故事檔
                             cloudinary.uploader.upload(
                                 new_file,
                                 resource_type="raw",
                                 public_id=f"story_books/{safe_filename}",
                                 overwrite=True,
                             )
+                            # 2. 如果有上傳封面，則同步上傳至圖片專用資料夾
+                            if cover_file:
+                                cloudinary.uploader.upload(
+                                    cover_file,
+                                    resource_type="image",
+                                    public_id=f"story_covers/{safe_filename}",
+                                    overwrite=True,
+                                )
                             st.sidebar.success(
-                                f"《{new_file.name}》已成功收錄！"
+                                f"《{new_file.name}》與封面已成功收錄！"
                             )
                             st.rerun()
                         except Exception as e:
@@ -248,6 +261,7 @@ if has_cloud:
             if resources:
                 st.header("📖 您的故事書櫃")
                 cols = st.columns(3)
+                cloud_name_str = st.secrets["cloudinary"].get("cloud_name", "")
 
                 for idx, res in enumerate(resources):
                     col = cols[idx % 3]
@@ -264,9 +278,15 @@ if has_cloud:
 
                     file_bytes_size = res.get("bytes", 0)
                     size_display = format_file_size(file_bytes_size)
+                    cover_url = f"https://res.cloudinary.com/{cloud_name_str}/image/upload/story_covers/{quote(book_title)}"
 
                     with col:
                         with st.container(border=True):
+                            try:
+                                st.image(cover_url, use_container_width=True)
+                            except Exception:
+                                st.caption("📷 尚無封面圖片")
+
                             st.subheader(f"📘 {book_title}")
                             st.caption(
                                 f"📅 上傳：{date_display} ｜ 📦 大小：{size_display}"
@@ -293,6 +313,13 @@ if has_cloud:
                                     cloudinary.uploader.destroy(
                                         public_id, resource_type="raw"
                                     )
+                                    try:
+                                        cloudinary.uploader.destroy(
+                                            f"story_covers/{quote(book_title)}",
+                                            resource_type="image",
+                                        )
+                                    except Exception:
+                                        pass
                                     st.toast(f"已刪除《{book_title}》")
                                     st.rerun()
 
