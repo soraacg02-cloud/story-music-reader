@@ -334,7 +334,7 @@ if has_cloud:
 
                 st.sidebar.divider()
 
-                # 【順序 3】：章節切換與精簡版快轉進度（已移除重複的文字標籤，僅留拉 bar 與動態百分比格式化）
+                # 【順序 3】：章節切換與精簡版快轉進度
                 st.sidebar.header("📌 章節切換與進度")
                 
                 pct_value = st.sidebar.slider(
