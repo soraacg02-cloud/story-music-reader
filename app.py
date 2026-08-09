@@ -11,7 +11,7 @@ import streamlit as st
 
 # 1. 頁面基本配置
 st.set_page_config(
-    page_title="雲端沉沉浸式故事音樂書櫃", page_icon="📚", layout="wide"
+    page_title="雲端沉浸式故事音樂書櫃", page_icon="📚", layout="wide"
 )
 
 # 2. Session State 記憶狀態初始化
@@ -37,7 +37,7 @@ st.session_state.theme_mode = st.sidebar.radio(
     key="theme_radio",
 )
 
-# 3. 高對比度與常態懸浮「閱讀拉 Bar」CSS 注入
+# 3. 高對比度與主題顏色設定
 if st.session_state.theme_mode == "🌙 黑底模式":
     bg_col, sidebar_bg, card_bg, border_col, text_col, button_bg = (
         "#0e1117",
@@ -47,6 +47,7 @@ if st.session_state.theme_mode == "🌙 黑底模式":
         "#e0e0e0",
         "#262c36",
     )
+    bar_bg, bar_fill = "#333945", "linear-gradient(90deg, #4facfe, #00f2fe)"
 else:
     bg_col, sidebar_bg, card_bg, border_col, text_col, button_bg = (
         "#f9f9fb",
@@ -56,6 +57,7 @@ else:
         "#1f232a",
         "#ffffff",
     )
+    bar_bg, bar_fill = "#e0e4ec", "linear-gradient(90deg, #36d1dc, #5b86e5)"
 
 css_style = f"""
 <style>
@@ -85,22 +87,9 @@ css_style = f"""
         border-radius: 8px !important;
     }}
 
-    /* 核心亮點：運用 CSS Sticky 讓閱讀拉 Bar 常態懸浮頂端 */
-    div[data-testid="stElementContainer"]:has(div[data-testid="stSlider"]) {{
-        position: sticky !important;
-        top: 3.5rem !important;
-        z-index: 999 !important;
-        background-color: {card_bg} !important;
-        padding: 12px 16px !important;
-        border-radius: 12px !important;
-        border: 1px solid {border_col} !important;
-        box-shadow: 0px 4px 12px rgba(0,0,0,0.3) !important;
-    }}
-
     p, h1, h2, h3, h4, span, label {{ color: {text_col} !important; }}
 </style>
 """
-
 st.markdown(css_style, unsafe_allow_html=True)
 
 
@@ -348,6 +337,55 @@ if has_cloud:
                     st.rerun()
 
                 # ---------------- 文章閱讀主區域 ----------------
+                # 關鍵升級：常態固定於螢幕最頂端的 HTML/JS 即時百分比進度條
+                progress_html = f"""
+                <div id="sticky-progress-container" style="
+                    position: fixed;
+                    top: 0;
+                    left: 0;
+                    width: 100%;
+                    z-index: 99999;
+                    background-color: {card_bg};
+                    border-bottom: 1px solid {border_col};
+                    padding: 8px 16px;
+                    display: flex;
+                    align-items: center;
+                    justify-content: space-between;
+                    box-shadow: 0px 2px 8px rgba(0,0,0,0.25);
+                ">
+                    <div style="font-size: 14px; font-weight: bold; color: {text_col}; min-width: 140px;">
+                        📜 閱讀進度：<span id="scroll-pct-text">0%</span>
+                    </div>
+                    <div style="flex-grow: 1; margin: 0 16px; background-color: {bar_bg}; height: 10px; border-radius: 5px; overflow: hidden;">
+                        <div id="scroll-pct-bar" style="width: 0%; height: 100%; background: {bar_fill}; transition: width 0.1s ease-out;"></div>
+                    </div>
+                </div>
+
+                <script>
+                    function updateReadingProgress() {{
+                        const winScroll = window.scrollY || document.documentElement.scrollTop;
+                        const height = document.documentElement.scrollHeight - document.documentElement.clientHeight;
+                        let scrolled = 0;
+                        if (height > 0) {{
+                            scrolled = (winScroll / height) * 100;
+                        }}
+                        if (scrolled < 0) scrolled = 0;
+                        if (scrolled > 100) scrolled = 100;
+                        
+                        const pctText = document.getElementById("scroll-pct-text");
+                        const pctBar = document.getElementById("scroll-pct-bar");
+                        if (pctText && pctBar) {{
+                            pctText.innerText = Math.round(scrolled) + "%";
+                            pctBar.style.width = scrolled + "%";
+                        }}
+                    }}
+                    window.addEventListener('scroll', updateReadingProgress);
+                    window.addEventListener('resize', updateReadingProgress);
+                    updateReadingProgress();
+                </script>
+                """
+                st.components.v1.html(progress_html, height=50)
+
                 st.header(f"《{book_name}》")
 
                 # 自動播放開關
@@ -357,24 +395,6 @@ if has_cloud:
                     )
 
                 st.subheader(current_ch["title"])
-
-                # 常態懸浮「閱讀拉 Bar」（被 CSS 設為 position: sticky）
-                content_lines = current_ch["content"]
-                total_lines = len(content_lines)
-
-                if total_lines > 1:
-                    scroll_pos = st.slider(
-                        "📜 閱讀拉 Bar（常態固定懸浮）",
-                        min_value=1,
-                        max_value=total_lines,
-                        value=1,
-                        help="拖動滑桿可隨時定位至指定段落",
-                    )
-                    st.caption(f"📍 當前定位於第 {scroll_pos} / {total_lines} 段落")
-                    display_lines = content_lines[scroll_pos - 1 :]
-                else:
-                    display_lines = content_lines
-
                 st.divider()
 
                 # 頂部導航按鈕
@@ -400,8 +420,8 @@ if has_cloud:
 
                 st.divider()
 
-                # 文章段落渲染（文字會從懸浮拉 Bar 下方穿過）
-                for line in display_lines:
+                # 文章段落渲染
+                for line in current_ch["content"]:
                     if line.strip() == "":
                         st.markdown("&nbsp;")
                     else:
