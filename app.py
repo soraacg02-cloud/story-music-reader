@@ -21,6 +21,8 @@ if "ch_index" not in st.session_state:
     st.session_state.ch_index = 0
 if "theme_mode" not in st.session_state:
     st.session_state.theme_mode = "🌙 黑底模式"
+if "auto_play" not in st.session_state:
+    st.session_state.auto_play = True  # 預設開啟自動播放
 
 # 3. 側邊欄：視覺風格切換
 st.sidebar.header("🎨 視覺風格設定")
@@ -31,7 +33,7 @@ st.session_state.theme_mode = st.sidebar.radio(
     key="theme_radio",
 )
 
-# 4. 精準修復黑底模式 Popover 氣泡選單與手機字體高對比度 CSS
+# 4. 高對比度與手機介面優化 CSS
 if st.session_state.theme_mode == "🌙 黑底模式":
     css_style = """
     <style>
@@ -39,24 +41,19 @@ if st.session_state.theme_mode == "🌙 黑底模式":
         [data-testid="stSidebar"], [data-testid="stSidebarContent"] { background-color: #161920 !important; }
         [data-testid="stSidebar"] *, [data-testid="stSidebar"] label, [data-testid="stSidebar"] p { color: #f0f2f6 !important; }
 
-        /* 精準修復 Popover 氣泡彈出視窗黑底高對比度 */
         div[data-testid="stPopoverBody"] {
             background-color: #1f232a !important;
             border: 1px solid #30363d !important;
             border-radius: 12px !important;
         }
-        div[data-testid="stPopoverBody"] * {
-            color: #ffffff !important;
-        }
+        div[data-testid="stPopoverBody"] * { color: #ffffff !important; }
 
-        /* 內文區域卡片 */
         div[data-testid="stContainer"] { 
             background-color: #1f232a !important; 
             border: 1px solid #30363d !important; 
             border-radius: 12px; 
         }
 
-        /* 按鈕高對比度樣式 */
         div.stButton > button, div[data-testid="stPopover"] > button { 
             background-color: #262c36 !important; 
             color: #ffffff !important; 
@@ -125,7 +122,7 @@ def init_cloudinary():
     return True
 
 
-# 6. 回呼函式 (Callbacks)：確保章節切換按鈕 100% 運作
+# 6. 回呼函式 (Callbacks)
 def prev_chapter_cb():
     if st.session_state.ch_index > 0:
         st.session_state.ch_index -= 1
@@ -178,10 +175,21 @@ def parse_docx_bytes(file_bytes):
     return chapters
 
 
+# 8. 音樂播放器輔助函式 (渲染於側邊欄與主要區域)
+def render_music_player(music_url, is_autoplay, key_prefix):
+    if music_url:
+        if "youtube.com" in music_url or "youtu.be" in music_url:
+            st.video(music_url, autoplay=is_autoplay)
+        else:
+            st.audio(music_url, autoplay=is_autoplay)
+    else:
+        st.caption("🎵 本章節未設定背景音樂")
+
+
 has_cloud = init_cloudinary()
 st.title("📚 雲端沉浸式故事音樂書櫃")
 
-# 8. 主邏輯區域
+# 9. 主邏輯區域
 if has_cloud:
     try:
         resources = cloudinary.api.resources(
@@ -297,20 +305,22 @@ if has_cloud:
 
                 st.sidebar.subheader(f"📖 《{book_name}》")
 
-                # 懸浮音樂播放器（讀到一半開啟左側邊欄可隨時暫停/播放）
-                st.sidebar.subheader("🎵 章節音樂控制箱")
-                if current_ch["music_url"]:
-                    url = current_ch["music_url"]
-                    if "youtube.com" in url or "youtu.be" in url:
-                        st.sidebar.video(url)
-                    else:
-                        st.sidebar.audio(url)
-                else:
-                    st.sidebar.caption("本章節未設定背景音樂")
+                # 自動播放切換開關
+                st.session_state.auto_play = st.sidebar.toggle(
+                    "▶️ 切換章節自動播放音樂", value=st.session_state.auto_play
+                )
+
+                # 懸浮音樂播放器
+                st.sidebar.subheader("🎵 懸浮音樂控制箱")
+                render_music_player(
+                    current_ch["music_url"],
+                    st.session_state.auto_play,
+                    "side",
+                )
 
                 st.sidebar.divider()
 
-                # 關鍵修改：改用 st.popover + st.radio，純點擊選單，100% 杜絕手機鍵盤彈出
+                # 章節選擇 popover
                 with st.sidebar.popover(
                     f"📌 章節跳轉：{current_ch['title']}",
                     use_container_width=True,
@@ -324,7 +334,7 @@ if has_cloud:
                         args=(chapter_titles,),
                     )
 
-                # 上下章按鈕：綁定 Callbacks 回呼函式
+                # 上下章按鈕
                 nav_c1, nav_c2 = st.sidebar.columns(2)
                 with nav_c1:
                     st.button(
@@ -349,6 +359,16 @@ if has_cloud:
                 # ---------------- 文章閱讀主區域 ----------------
                 st.header(f"《{book_name}》")
                 st.subheader(current_ch["title"])
+
+                # 主要閱讀區內建的音樂控制列 (直觀可見)
+                with st.container(border=True):
+                    st.markdown("🎧 **本章背景音樂播放區**")
+                    render_music_player(
+                        current_ch["music_url"],
+                        st.session_state.auto_play,
+                        "main",
+                    )
+
                 st.divider()
 
                 # 頂部導航按鈕
