@@ -37,7 +37,7 @@ st.session_state.theme_mode = st.sidebar.radio(
     key="theme_radio",
 )
 
-# 3. 高對比度與主題顏色設定
+# 3. 高對比度與綠框磁吸懸浮 CSS 設定
 if st.session_state.theme_mode == "🌙 黑底模式":
     bg_col, sidebar_bg, card_bg, border_col, text_col, button_bg = (
         "#0e1117",
@@ -83,6 +83,15 @@ css_style = f"""
         font-weight: bold !important;
         min-height: 48px !important;
         border-radius: 8px !important;
+    }}
+
+    /* 核心亮點：讓綠框（包含滑桿與進度條的容器）磁吸懸浮於頂端 */
+    div[data-testid="stVerticalBlock"] > div:has(div.stSlider) {{
+        position: sticky !important;
+        top: 3rem !important;
+        z-index: 999 !important;
+        background-color: {card_bg} !important;
+        box-shadow: 0px 4px 12px rgba(0, 0, 0, 0.3) !important;
     }}
 
     p, h1, h2, h3, h4, span, label {{ color: {text_col} !important; }}
@@ -344,9 +353,8 @@ if has_cloud:
                     )
 
                 st.subheader(current_ch["title"])
-                st.divider()
 
-                # 關鍵突破：採用 100% 穩定連點跳轉的原生百分比點擊控制器
+                # 關鍵保留：綠框控壓區（設為 position: sticky 磁吸固定最頂端）
                 content_lines = current_ch["content"]
                 total_lines = len(content_lines)
 
@@ -402,7 +410,7 @@ if has_cloud:
 
                 st.divider()
 
-                # 文章段落渲染（即時呈現從選定百分比開始的文章內容）
+                # 文章段落渲染（呈現從選定百分比開始的文章內容）
                 display_lines = content_lines[start_line_idx:]
                 for line in display_lines:
                     if line.strip() == "":
