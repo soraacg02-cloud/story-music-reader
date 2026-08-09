@@ -85,7 +85,7 @@ css_style = f"""
         border-radius: 8px !important;
     }}
 
-    /* 核心亮點：讓綠框（包含滑桿與進度條的容器）磁吸懸浮於頂端 */
+    /* 關鍵效果：將包含滑桿與進度條的綠框卡片磁吸固定於頂端 */
     div[data-testid="stVerticalBlock"] > div:has(div.stSlider) {{
         position: sticky !important;
         top: 3rem !important;
@@ -180,6 +180,21 @@ def render_music_player(music_url, is_autoplay):
 
 
 has_cloud = init_cloudinary()
+
+# 關鍵防護：每次載入時強制清空瀏覽器頂層殘留的舊紅框元素
+st.components.v1.html(
+    """
+<script>
+    const pDoc = window.parent.document;
+    const old1 = pDoc.getElementById("parent-sticky-bar");
+    if (old1) old1.remove();
+    const old2 = pDoc.getElementById("sticky-progress-container");
+    if (old2) old2.remove();
+</script>
+""",
+    height=0,
+)
+
 st.title("📚 雲端沉浸式故事音樂書櫃")
 
 # 8. 主邏輯區域
@@ -354,7 +369,7 @@ if has_cloud:
 
                 st.subheader(current_ch["title"])
 
-                # 關鍵保留：綠框控壓區（設為 position: sticky 磁吸固定最頂端）
+                # 保留唯一快轉區：綠框卡片（CSS 已設為 sticky 磁吸懸浮頂端）
                 content_lines = current_ch["content"]
                 total_lines = len(content_lines)
 
