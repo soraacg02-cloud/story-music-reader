@@ -11,7 +11,7 @@ import streamlit as st
 
 # 1. 頁面基本配置
 st.set_page_config(
-    page_title="雲端沉浸式故事音樂書櫃", page_icon="📚", layout="wide"
+    page_title="雲端沉沉浸式故事音樂書櫃", page_icon="📚", layout="wide"
 )
 
 # 2. Session State 記憶狀態初始化
@@ -28,7 +28,7 @@ if "max_chapters" not in st.session_state:
 if "chapter_titles" not in st.session_state:
     st.session_state.chapter_titles = []
 
-# ---------------- 【1】左側欄順序 1：視覺風格 ----------------
+# ---------------- 【左側欄順序 1】：視覺風格 ----------------
 st.sidebar.header("🎨 視覺風格")
 st.session_state.theme_mode = st.sidebar.radio(
     "選擇閱讀配色：",
@@ -37,77 +37,69 @@ st.session_state.theme_mode = st.sidebar.radio(
     key="theme_radio",
 )
 
-# 3. 高對比度與手機介面優化 CSS
+# 3. 高對比度與常態懸浮「閱讀拉 Bar」CSS 注入
 if st.session_state.theme_mode == "🌙 黑底模式":
-    css_style = """
-    <style>
-        .stApp { background-color: #0e1117 !important; }
-        [data-testid="stSidebar"], [data-testid="stSidebarContent"] { background-color: #161920 !important; }
-        [data-testid="stSidebar"] *, [data-testid="stSidebar"] label, [data-testid="stSidebar"] p { color: #f0f2f6 !important; }
-
-        div[data-testid="stPopoverBody"] {
-            background-color: #1f232a !important;
-            border: 1px solid #30363d !important;
-            border-radius: 12px !important;
-        }
-        div[data-testid="stPopoverBody"] * { color: #ffffff !important; }
-
-        div[data-testid="stContainer"] { 
-            background-color: #1f232a !important; 
-            border: 1px solid #30363d !important; 
-            border-radius: 12px; 
-        }
-
-        div.stButton > button, div[data-testid="stPopover"] > button { 
-            background-color: #262c36 !important; 
-            color: #ffffff !important; 
-            border: 1px solid #4f5866 !important; 
-            font-weight: bold !important;
-            min-height: 48px !important;
-            border-radius: 8px !important;
-        }
-        div.stButton > button:disabled { 
-            background-color: #12151a !important; 
-            color: #555e6d !important; 
-            border: 1px solid #222730 !important; 
-        }
-        p, h1, h2, h3, h4, span, label { color: #e0e0e0 !important; }
-    </style>
-    """
+    bg_col, sidebar_bg, card_bg, border_col, text_col, button_bg = (
+        "#0e1117",
+        "#161920",
+        "#1f232a",
+        "#30363d",
+        "#e0e0e0",
+        "#262c36",
+    )
 else:
-    css_style = """
-    <style>
-        .stApp { background-color: #f9f9fb !important; }
-        [data-testid="stSidebar"], [data-testid="stSidebarContent"] { background-color: #ffffff !important; }
-        [data-testid="stSidebar"] *, [data-testid="stSidebar"] label, [data-testid="stSidebar"] p { color: #1f232a !important; }
+    bg_col, sidebar_bg, card_bg, border_col, text_col, button_bg = (
+        "#f9f9fb",
+        "#ffffff",
+        "#ffffff",
+        "#e1e4e8",
+        "#1f232a",
+        "#ffffff",
+    )
 
-        div[data-testid="stPopoverBody"] {
-            background-color: #ffffff !important;
-            border: 1px solid #e1e4e8 !important;
-            border-radius: 12px !important;
-        }
+css_style = f"""
+<style>
+    .stApp {{ background-color: {bg_col} !important; }}
+    [data-testid="stSidebar"], [data-testid="stSidebarContent"] {{ background-color: {sidebar_bg} !important; }}
+    [data-testid="stSidebar"] *, [data-testid="stSidebar"] label, [data-testid="stSidebar"] p {{ color: #f0f2f6 !important; }}
 
-        div[data-testid="stContainer"] { 
-            background-color: #ffffff !important; 
-            border: 1px solid #e1e4e8 !important; 
-            border-radius: 12px; 
-        }
-        div.stButton > button, div[data-testid="stPopover"] > button { 
-            background-color: #ffffff !important; 
-            color: #1f232a !important; 
-            border: 1px solid #c0c4cc !important; 
-            font-weight: bold !important;
-            min-height: 48px !important;
-            border-radius: 8px !important;
-        }
-        div.stButton > button:disabled { 
-            background-color: #f0f2f5 !important; 
-            color: #a8abb2 !important; 
-            border: 1px solid #e4e7ed !important; 
-        }
-        p, h1, h2, h3, h4, span, label { color: #1f232a !important; }
-    </style>
-    """
+    div[data-testid="stPopoverBody"] {{
+        background-color: {card_bg} !important;
+        border: 1px solid {border_col} !important;
+        border-radius: 12px !important;
+    }}
+    div[data-testid="stPopoverBody"] * {{ color: {text_col} !important; }}
+
+    div[data-testid="stContainer"] {{ 
+        background-color: {card_bg} !important; 
+        border: 1px solid {border_col} !important; 
+        border-radius: 12px; 
+    }}
+
+    div.stButton > button, div[data-testid="stPopover"] > button {{ 
+        background-color: {button_bg} !important; 
+        color: {text_col} !important; 
+        border: 1px solid {border_col} !important; 
+        font-weight: bold !important;
+        min-height: 48px !important;
+        border-radius: 8px !important;
+    }}
+
+    /* 核心亮點：運用 CSS Sticky 讓閱讀拉 Bar 常態懸浮頂端 */
+    div[data-testid="stElementContainer"]:has(div[data-testid="stSlider"]) {{
+        position: sticky !important;
+        top: 3.5rem !important;
+        z-index: 999 !important;
+        background-color: {card_bg} !important;
+        padding: 12px 16px !important;
+        border-radius: 12px !important;
+        border: 1px solid {border_col} !important;
+        box-shadow: 0px 4px 12px rgba(0,0,0,0.3) !important;
+    }}
+
+    p, h1, h2, h3, h4, span, label {{ color: {text_col} !important; }}
+</style>
+"""
 
 st.markdown(css_style, unsafe_allow_html=True)
 
@@ -126,7 +118,7 @@ def init_cloudinary():
     return True
 
 
-# 5. 安全無參數回呼函式
+# 5. 安全無參數回呼函式 (Parameterless Callbacks)
 def prev_chapter_cb():
     if st.session_state.ch_index > 0:
         st.session_state.ch_index -= 1
@@ -300,7 +292,7 @@ if has_cloud:
 
                 current_ch = chapters[st.session_state.ch_index]
 
-                # ---------------- 側邊欄區域（嚴格依需求順序重構） ----------------
+                # ---------------- 側邊欄區域（四大順序） ----------------
                 st.sidebar.divider()
 
                 # 【順序 2】：音樂盒
@@ -365,19 +357,18 @@ if has_cloud:
                     )
 
                 st.subheader(current_ch["title"])
-                st.divider()
 
-                # 【新增功能】：主閱覽區「閱讀進度拉 Bar」
+                # 常態懸浮「閱讀拉 Bar」（被 CSS 設為 position: sticky）
                 content_lines = current_ch["content"]
                 total_lines = len(content_lines)
 
                 if total_lines > 1:
                     scroll_pos = st.slider(
-                        "📜 閱讀拉 Bar（快速滑動段落）",
+                        "📜 閱讀拉 Bar（常態固定懸浮）",
                         min_value=1,
                         max_value=total_lines,
                         value=1,
-                        help="拖動滑桿可快速跳轉至指定段落開始閱讀",
+                        help="拖動滑桿可隨時定位至指定段落",
                     )
                     st.caption(f"📍 當前定位於第 {scroll_pos} / {total_lines} 段落")
                     display_lines = content_lines[scroll_pos - 1 :]
@@ -409,7 +400,7 @@ if has_cloud:
 
                 st.divider()
 
-                # 文章段落渲染（根據拉 Bar 選擇的起點開始呈現）
+                # 文章段落渲染（文字會從懸浮拉 Bar 下方穿過）
                 for line in display_lines:
                     if line.strip() == "":
                         st.markdown("&nbsp;")
