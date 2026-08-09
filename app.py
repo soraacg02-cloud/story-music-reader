@@ -23,6 +23,10 @@ if "theme_mode" not in st.session_state:
     st.session_state.theme_mode = "🌙 黑底模式"
 if "auto_play" not in st.session_state:
     st.session_state.auto_play = True
+if "max_chapters" not in st.session_state:
+    st.session_state.max_chapters = 1
+if "chapter_titles" not in st.session_state:
+    st.session_state.chapter_titles = []
 
 # 3. 側邊欄：視覺風格切換
 st.sidebar.header("🎨 視覺風格設定")
@@ -122,21 +126,22 @@ def init_cloudinary():
     return True
 
 
-# 6. 回呼函式 (Callbacks)
+# 6. 安全無參數回呼函式 (Parameterless Callbacks)
 def prev_chapter_cb():
     if st.session_state.ch_index > 0:
         st.session_state.ch_index -= 1
 
 
-def next_chapter_cb(total_chapters):
-    if st.session_state.ch_index < total_chapters - 1:
+def next_chapter_cb():
+    if st.session_state.ch_index < st.session_state.max_chapters - 1:
         st.session_state.ch_index += 1
 
 
-def on_radio_change_cb(chapter_titles):
+def on_radio_change_cb():
     selected = st.session_state.get("sb_popover_radio")
-    if selected in chapter_titles:
-        st.session_state.ch_index = chapter_titles.index(selected)
+    titles = st.session_state.get("chapter_titles", [])
+    if selected in titles:
+        st.session_state.ch_index = titles.index(selected)
 
 
 # 7. Word 文件解析器
@@ -175,7 +180,7 @@ def parse_docx_bytes(file_bytes):
     return chapters
 
 
-# 8. 音樂播放器輔助函式（專收納於左側邊欄）
+# 8. 音樂播放器輔助函式（收納於左側邊欄）
 def render_music_player(music_url, is_autoplay):
     if music_url:
         if "youtube.com" in music_url or "youtu.be" in music_url:
@@ -286,15 +291,17 @@ if has_cloud:
 
                 response = requests.get(book_url)
                 chapters = parse_docx_bytes(response.content)
-                total_chapters = len(chapters)
 
-                if st.session_state.ch_index >= total_chapters:
+                # 更新 Session State 中的章節元數據，供 Callback 無參數調用
+                st.session_state.max_chapters = len(chapters)
+                st.session_state.chapter_titles = [ch["title"] for ch in chapters]
+
+                if st.session_state.ch_index >= st.session_state.max_chapters:
                     st.session_state.ch_index = 0
 
-                chapter_titles = [ch["title"] for ch in chapters]
                 current_ch = chapters[st.session_state.ch_index]
 
-                # 側邊欄懸浮控制區（音樂播放器專屬位置）
+                # 側邊欄懸浮控制區
                 st.sidebar.divider()
                 st.sidebar.header("🎛️ 閱讀控制面板")
                 if st.sidebar.button(
@@ -305,7 +312,7 @@ if has_cloud:
 
                 st.sidebar.subheader(f"📖 《{book_name}》")
 
-                # 【1】音樂播放區：嚴格歸位於左側邊欄
+                # 【1】音樂播放區：收納於左側邊欄
                 st.sidebar.subheader("🎵 懸浮音樂控制箱")
                 render_music_player(
                     current_ch["music_url"], st.session_state.auto_play
@@ -313,21 +320,20 @@ if has_cloud:
 
                 st.sidebar.divider()
 
-                # 氣泡章節跳轉選單（手機零鍵盤彈出）
+                # 氣泡章節跳轉選單（手機點擊零鍵盤彈出）
                 with st.sidebar.popover(
                     f"📌 章節跳轉：{current_ch['title']}",
                     use_container_width=True,
                 ):
                     st.radio(
                         "請選擇要閱讀的章節：",
-                        chapter_titles,
+                        st.session_state.chapter_titles,
                         index=st.session_state.ch_index,
                         key="sb_popover_radio",
                         on_change=on_radio_change_cb,
-                        args=(chapter_titles,),
                     )
 
-                # 上下章控制按鈕
+                # 上下章控制按鈕（無參數綁定 Callback）
                 nav_c1, nav_c2 = st.sidebar.columns(2)
                 with nav_c1:
                     st.button(
@@ -341,25 +347,24 @@ if has_cloud:
                     st.button(
                         "下一章 ➡️",
                         disabled=(
-                            st.session_state.ch_index >= total_chapters - 1
+                            st.session_state.ch_index >= st.session_state.max_chapters - 1
                         ),
                         use_container_width=True,
                         key="side_next",
                         on_click=next_chapter_cb,
-                        args=(total_chapters,),
                     )
 
                 # ---------------- 文章閱讀主區域 ----------------
                 st.header(f"《{book_name}》")
 
-                # 【2】主要閱讀區最上方：僅放自動播放開關與手機貼心提示
+                # 【2】主閱讀區最上方：僅保留自動播放開關與手機提醒
                 with st.container(border=True):
                     st.session_state.auto_play = st.toggle(
                         "▶️ 切換章節自動播放音樂", value=st.session_state.auto_play
                     )
                     if st.session_state.auto_play:
                         st.caption(
-                            "📱 **手機讀者小提示**：受限於手機系統安全機制，跨頁切換後若音樂未自動響起，只需拉開左側選單點擊一次播放按鈕即可！"
+                            "📱 **手機讀者小提示**：受限於手機系統安全機制，換頁後若音樂未自動響起，只需拉開左側選單點擊一次播放按鈕即可！"
                         )
 
                 st.subheader(current_ch["title"])
@@ -379,7 +384,7 @@ if has_cloud:
                     st.button(
                         "下一章 ➡️",
                         disabled=(
-                            st.session_state.ch_index >= total_chapters - 1
+                            st.session_state.ch_index >= st.session_state.max_chapters - 1
                         ),
                         use_container_width=True,
                         key="top_next",
@@ -411,7 +416,7 @@ if has_cloud:
                     st.button(
                         "下一章 ➡️",
                         disabled=(
-                            st.session_state.ch_index >= total_chapters - 1
+                            st.session_state.ch_index >= st.session_state.max_chapters - 1
                         ),
                         use_container_width=True,
                         key="bot_next",
