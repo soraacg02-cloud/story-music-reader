@@ -1,184 +1,100 @@
+import docx
 import streamlit as st
-import requests
-from bs4 import BeautifulSoup
-import time
-import zipfile
-import io
-import random
-import urllib.parse
-import re
 
-st.set_page_config(page_title="專利 PDF 終極下載器 v5.0", page_icon="🚀")
-
-st.title("🚀 Google Patents 終極下載器 v5.0")
-st.markdown("""
-**功能更新：**
-1. 針對 `18/671705` 等申請號進行強化搜尋。
-2. 顯示搜尋到的「真實身分」案號。
-""")
-
-# 1. 使用者輸入區
-patent_ids = st.text_area(
-    "在此輸入專利案號 (一行一個)", 
-    height=150, 
-    placeholder="18/671705 (申請號)\nUS20240088000A1 (公開號)"
+# 1. 頁面基本設定
+st.set_page_config(
+    page_title="小說故事音樂閱讀器", page_icon="📚", layout="wide"
 )
 
-def get_headers():
-    """隨機切換身分，避免被 Google 認定是機器人"""
-    user_agents = [
-        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/120.0.0.0 Safari/537.36",
-        "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) Chrome/119.0.0.0 Safari/537.36",
-        "Mozilla/5.0 (X11; Linux x86_64) Chrome/118.0.0.0 Safari/537.36"
-    ]
-    return {
-        "User-Agent": random.choice(user_agents),
-        "Accept-Language": "en-US,en;q=0.9",
-        "Referer": "https://www.google.com/"
-    }
+st.title("📖 沉浸式故事音樂閱讀器")
+st.caption("上傳您的 Word 故事檔，體驗章節與背景音樂同步的閱讀享受。")
 
-def search_google_for_correct_url(query):
-    """
-    當直接下載失敗時，去 Google 搜尋「真實案號」
-    """
-    # 針對申請號的特殊優化：加上 "patent" 關鍵字讓 Google 知道我們在找專利
-    search_query = f"{query} patent site:patents.google.com"
-    google_url = f"https://www.google.com/search?q={urllib.parse.quote(search_query)}"
-    
-    try:
-        # 隨機延遲，模擬真人思考
-        time.sleep(random.uniform(1.5, 3.0))
-        resp = requests.get(google_url, headers=get_headers(), timeout=10)
-        
-        if resp.status_code == 200:
-            soup = BeautifulSoup(resp.text, "html.parser")
-            
-            # 尋找搜尋結果中的連結
-            # Google 的搜尋結果通常包含在 <a href="..."> 中，且連結指向 patents.google.com/patent/
-            links = soup.find_all('a', href=True)
-            for link in links:
-                href = link['href']
-                if "patents.google.com/patent/" in href:
-                    # 清理連結 (有時候會包含 /url?q=...)
-                    if "/url?q=" in href:
-                        href = href.split("/url?q=")[1].split("&")[0]
-                    return href
-    except Exception as e:
-        print(f"Search Error: {e}")
-    return None
+# 2. 左側邊欄：多檔案上傳區 (可同時上傳多個 Word 故事集)
+st.sidebar.header("📂 故事集上傳區")
+uploaded_files = st.sidebar.file_uploader(
+    "上傳 Word 故事檔 (.docx)", type=["docx"], accept_multiple_files=True
+)
 
-def get_pdf_data(patent_id):
-    """
-    主邏輯：
-    1. 嘗試直接猜測 (快)
-    2. 失敗則去 Google 搜尋 (慢但準)
-    3. 下載 PDF
-    """
-    clean_id = patent_id.strip()
-    status_msg = ""
-    
-    # --- 階段一：獲取正確的網址 ---
-    target_url = None
-    
-    # 1. 先試試看直接拼網址 (適合標準公開號)
-    guess_url = f"https://patents.google.com/patent/{clean_id.replace('/', '').replace('-', '')}/en"
-    try:
-        if requests.get(guess_url, headers=get_headers(), timeout=5).status_code == 200:
-            target_url = guess_url
-    except:
-        pass
 
-    # 2. 如果直連失敗，啟動 Google 搜尋 (適合申請號 18/671705)
-    if not target_url:
-        found_url = search_google_for_correct_url(clean_id)
-        if found_url:
-            target_url = found_url
-            status_msg = f"(透過搜尋找到對應網頁)"
+def parse_word_story(file):
+    """解析 Word (.docx) 檔案，自動提取章節標題、音樂網址與故事內文"""
+    doc = docx.Document(file)
+    chapters = []
+    current_chapter = {"title": "前言/序章", "music_url": "", "content": []}
 
-    if not target_url:
-        return "NOT_FOUND", None, None, "找不到對應網頁"
+    for paragraph in doc.paragraphs:
+        text = paragraph.text.strip()
+        if not text:
+            continue
 
-    # --- 階段二：從網頁中抓 PDF ---
-    try:
-        resp = requests.get(target_url, headers=get_headers(), timeout=10)
-        soup = BeautifulSoup(resp.text, "html.parser")
-        
-        # 抓取真實案號 (從網頁標題或網址分析)
-        real_id = target_url.split("/patent/")[-1].split("/")[0]
-        
-        pdf_link = None
-        # 方法 A: 找連結
-        for link in soup.find_all('a', href=True):
-            if link['href'].endswith('.pdf'):
-                pdf_link = link['href']
-                break
-        
-        # 方法 B: 找 Meta 標籤
-        if not pdf_link:
-            meta = soup.find("meta", {"name": "citation_pdf_url"})
-            if meta: pdf_link = meta['content']
+        # 檢測是否為新章節 (比對標題符號或「第X章」)
+        if any(
+            text.startswith(prefix)
+            for prefix in ["①", "②", "③", "④", "⑤", "⑥", "⑦", "⑧", "⑨", "⑩"]
+        ) or "章" in text[:4]:
+            if current_chapter["content"] or current_chapter["music_url"]:
+                chapters.append(current_chapter)
+            current_chapter = {"title": text, "music_url": "", "content": []}
 
-        if pdf_link:
-            # 下載檔案
-            file_resp = requests.get(pdf_link, headers=get_headers(), timeout=15)
-            if file_resp.status_code == 200:
-                return "SUCCESS", f"{real_id}.pdf", file_resp.content, f"成功！(對應公開號: {real_id})"
-            else:
-                return "FAIL", None, None, "找到連結但下載失敗"
+        # 檢測音樂網址 (若內文出現 http 連結)
+        elif text.startswith("http://") or text.startswith("https://"):
+            current_chapter["music_url"] = text
+
+        # 檢測音樂印象曲標題 (若尚未填入網址，可作備註說明)
+        elif "印象曲" in text and not current_chapter["music_url"]:
+            current_chapter["content"].append(f"*(音樂：{text})*")
+
+        # 一般小說內文
         else:
-            return "NO_LINK", None, None, f"找到網頁 ({real_id}) 但沒有 PDF 下載點"
-            
-    except Exception as e:
-        return "ERROR", None, None, str(e)
+            current_chapter["content"].append(text)
 
-# 2. 按鈕邏輯
-if st.button("🚀 啟動終極搜尋"):
-    if patent_ids:
-        raw_list = [x.strip() for x in patent_ids.split('\n') if x.strip()]
-        
-        zip_buffer = io.BytesIO()
-        results_log = []
-        success_count = 0
-        
-        progress_bar = st.progress(0)
-        status_text = st.empty()
+    # 加入最後一個章節
+    if current_chapter["content"] or current_chapter["music_url"]:
+        chapters.append(current_chapter)
 
-        with zipfile.ZipFile(zip_buffer, "w") as zf:
-            for i, pid in enumerate(raw_list):
-                status_text.text(f"正在偵探調查 ({i+1}/{len(raw_list)}): {pid} ...")
-                
-                # 執行搜尋
-                code, filename, content, msg = get_pdf_data(pid)
-                
-                if code == "SUCCESS":
-                    zf.writestr(filename, content)
-                    success_count += 1
-                    results_log.append(f"✅ **{pid}** -> {msg}")
-                elif code == "NOT_FOUND":
-                    results_log.append(f"❌ **{pid}**: Google 搜尋也找不到，請確認號碼。")
-                else:
-                    results_log.append(f"⚠️ **{pid}**: {msg}")
-                
-                progress_bar.progress((i + 1) / len(raw_list))
-                # 搜尋需要一點時間休息，避免被 Google 懷疑
-                time.sleep(random.uniform(2.0, 4.0))
+    return chapters
 
-        status_text.text("處理完成！")
+
+# 3. 主要呈現邏輯
+if uploaded_files:
+    # 使用檔案名稱建立字典，達成多檔案獨立不干擾
+    stories = {file.name: file for file in uploaded_files}
+
+    # 選擇故事集
+    selected_story_name = st.sidebar.selectbox(
+        "📚 選擇故事集", list(stories.keys())
+    )
+
+    if selected_story_name:
+        story_file = stories[selected_story_name]
+        chapters = parse_word_story(story_file)
+
+        # 章節選單
+        chapter_titles = [ch["title"] for ch in chapters]
+        selected_ch_title = st.selectbox("📌 請選擇閱讀章節", chapter_titles)
+
+        # 取得當前章節
+        current_ch = next(
+            ch for ch in chapters if ch["title"] == selected_ch_title
+        )
+
         st.divider()
-        
-        if success_count > 0:
-            zip_buffer.seek(0)
-            st.success(f"🎉 成功下載 {success_count} 個檔案！")
-            st.download_button(
-                label="📥 下載打包檔案 (.zip)",
-                data=zip_buffer,
-                file_name="ultimate_patents.zip",
-                mime="application/zip",
-                type="primary"
+        st.header(current_ch["title"])
+
+        # 音樂播放介面
+        if current_ch["music_url"]:
+            st.audio(current_ch["music_url"])
+            st.success("🎵 背景音樂載入成功！請點擊播放按鈕開始聆聽。")
+        else:
+            st.info(
+                "💡 提示：若要在本章節自動載入音樂，請在 Word 該章節開頭加入 MP3 的 direct URL 網址（如：https://example.com/song.mp3）。"
             )
-        
-        with st.expander("查看詳細偵探報告", expanded=True):
-            for log in results_log:
-                st.markdown(log)
-    else:
-        st.warning("請先輸入案號")
+
+        st.divider()
+
+        # 呈現故事內文
+        for paragraph in current_ch["content"]:
+            st.write(paragraph)
+
+else:
+    st.info("👈 請先在左側邊欄上傳一個或多個 Word (.docx) 故事檔案開始體驗。")
