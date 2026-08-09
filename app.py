@@ -340,7 +340,7 @@ if has_cloud:
                                     st.toast(f"已刪除《{book_title}》")
                                     st.rerun()
 
-                            # 【重點修改】：在總書櫃卡片上新增「封面管理彈跳面板」
+                            # 總書櫃卡片上的「封面管理彈跳面板」
                             with st.popover(
                                 "🖼️ 編輯/補傳封面", use_container_width=True
                             ):
@@ -418,8 +418,8 @@ if has_cloud:
                 # ---------------- 側邊欄區域 ----------------
                 st.sidebar.divider()
 
-                # 【順序 1.5】：閱讀模式左側欄「單純展示封面」（管理移到了總書櫃）
-                st.sidebar.header("🖼️ 書籍封面")
+                # 【重點修改】：將左側欄標題動態改為對應的書名（檔名）
+                st.sidebar.header(f"🖼️ {book_name}")
                 reading_cover_url = cover_map.get(book_name)
                 if reading_cover_url:
                     st.sidebar.image(reading_cover_url, use_container_width=True)
