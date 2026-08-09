@@ -37,7 +37,7 @@ st.session_state.theme_mode = st.sidebar.radio(
     key="theme_radio",
 )
 
-# 3. 高對比度與極簡綠框懸浮 CSS 設定
+# 3. 高對比度與主題顏色 CSS 設定
 if st.session_state.theme_mode == "🌙 黑底模式":
     bg_col, sidebar_bg, card_bg, border_col, text_col, button_bg = (
         "#0e1117",
@@ -83,23 +83,6 @@ css_style = f"""
         font-weight: bold !important;
         min-height: 48px !important;
         border-radius: 8px !important;
-    }}
-
-    /* 關鍵極簡修飾：壓縮綠框卡片上下高度，縮減 70% 版面占用 */
-    div[data-testid="stVerticalBlock"] > div:has(div.stSlider) {{
-        position: sticky !important;
-        top: 3rem !important;
-        z-index: 999 !important;
-        background-color: {card_bg} !important;
-        padding: 4px 12px !important;
-        border-radius: 8px !important;
-        box-shadow: 0px 2px 8px rgba(0, 0, 0, 0.25) !important;
-    }}
-
-    /* 隱藏滑桿元件多餘的預設間距 */
-    div[data-testid="stSlider"] {{
-        padding-top: 0px !important;
-        padding-bottom: 0px !important;
     }}
 
     p, h1, h2, h3, h4, span, label {{ color: {text_col} !important; }}
@@ -189,7 +172,7 @@ def render_music_player(music_url, is_autoplay):
 
 has_cloud = init_cloudinary()
 
-# 強制自動清除舊的 JavaScript 頂層紅框元素殘影
+# 強制自動清除舊的 JavaScript 頂層殘影，維持頁面乾淨
 st.components.v1.html(
     """
 <script>
@@ -310,8 +293,10 @@ if has_cloud:
                     st.session_state.ch_index = 0
 
                 current_ch = chapters[st.session_state.ch_index]
+                content_lines = current_ch["content"]
+                total_lines = len(content_lines)
 
-                # ---------------- 側邊欄區域（四大順序） ----------------
+                # ---------------- 側邊欄區域（四大順序完美重構） ----------------
                 st.sidebar.divider()
 
                 # 【順序 2】：音樂盒
@@ -322,10 +307,28 @@ if has_cloud:
 
                 st.sidebar.divider()
 
-                # 【順序 3】：章節切換
-                st.sidebar.header("📌 章節切換")
+                # 【順序 3】：章節切換與常態固定快轉進度
+                st.sidebar.header("📌 章節切換與進度")
+                
+                # 關鍵升級：將快轉進度滑桿完全收納至左側邊欄（絕對固定不移位）
+                pct_key = f"sb_pct_{selected_res['public_id']}_{st.session_state.ch_index}"
+                pct_value = st.sidebar.slider(
+                    "🎯 快轉跳轉 (拖動或點擊 %)：",
+                    min_value=0,
+                    max_value=100,
+                    value=0,
+                    step=5,
+                    format="%d%%",
+                    key=pct_key,
+                )
+                start_line_idx = int(total_lines * (pct_value / 100.0))
+                if start_line_idx >= total_lines:
+                    start_line_idx = max(0, total_lines - 1)
+
+                st.sidebar.caption(f"📍 進度：**{pct_value}%** （第 {start_line_idx + 1}/{total_lines} 段）")
+
                 with st.sidebar.popover(
-                    f"跳轉：{current_ch['title']}",
+                    f"跳轉章節：{current_ch['title']}",
                     use_container_width=True,
                 ):
                     st.radio(
@@ -366,7 +369,7 @@ if has_cloud:
                     st.session_state.selected_book_id = None
                     st.rerun()
 
-                # ---------------- 文章閱讀主區域 ----------------
+                # ---------------- 文章閱讀主區域（極致純粹清爽） ----------------
                 st.header(f"《{book_name}》")
 
                 # 自動播放開關
@@ -376,30 +379,6 @@ if has_cloud:
                     )
 
                 st.subheader(current_ch["title"])
-
-                # 【精簡版懸浮綠框快轉卡片】：只保留單行精簡快轉滑桿，省下 70% 版面空間
-                content_lines = current_ch["content"]
-                total_lines = len(content_lines)
-
-                with st.container(border=True):
-                    pct_key = f"pct_jump_{selected_res['public_id']}_{st.session_state.ch_index}"
-
-                    # 將標題與進度文字簡化整合進 Slider Label 中
-                    pct_value = st.slider(
-                        "🎯 快轉跳轉 (拖動或點擊 %)：",
-                        min_value=0,
-                        max_value=100,
-                        value=0,
-                        step=5,
-                        format="%d%%",
-                        key=pct_key,
-                    )
-
-                    # 根據選定的百分比換算起始段落索引
-                    start_line_idx = int(total_lines * (pct_value / 100.0))
-                    if start_line_idx >= total_lines:
-                        start_line_idx = max(0, total_lines - 1)
-
                 st.divider()
 
                 # 頂部導航按鈕
@@ -425,7 +404,7 @@ if has_cloud:
 
                 st.divider()
 
-                # 文章段落渲染（呈現從選定百分比開始的文章內容）
+                # 文章段落渲染（完全無任何卡片遮擋，視野 100% 釋放）
                 display_lines = content_lines[start_line_idx:]
                 for line in display_lines:
                     if line.strip() == "":
