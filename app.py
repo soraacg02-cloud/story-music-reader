@@ -214,10 +214,23 @@ st.title("📚 雲端沉浸式故事音樂書櫃")
 # 8. 主邏輯區域
 if has_cloud:
     try:
+        # 1. 抓取文字檔 (raw)
         resources = cloudinary.api.resources(
             type="upload", prefix="story_books/", resource_type="raw"
         )["resources"]
-        cloud_name_str = st.secrets["cloudinary"].get("cloud_name", "")
+
+        # 2. 抓取所有已上傳的圖片 (image)，建立精準的【書名 ➡️ 圖片真實網址】對照字典
+        cover_map = {}
+        try:
+            cover_resources = cloudinary.api.resources(
+                type="upload", prefix="story_covers/", resource_type="image"
+            )["resources"]
+            for img_res in cover_resources:
+                clean_id = img_res["public_id"].replace("story_covers/", "")
+                title_key = unquote(clean_id)
+                cover_map[title_key] = img_res["secure_url"]
+        except Exception:
+            cover_map = {}
 
         # ---------------- 模式 A：總書櫃頁面 ----------------
         if not st.session_state.selected_book_id:
@@ -237,12 +250,14 @@ if has_cloud:
                     with st.spinner("正在上傳故事與封面..."):
                         try:
                             safe_filename = quote(new_file.name)
+                            # 上傳故事檔
                             cloudinary.uploader.upload(
                                 new_file,
                                 resource_type="raw",
                                 public_id=f"story_books/{safe_filename}",
                                 overwrite=True,
                             )
+                            # 上傳封面圖
                             if cover_file:
                                 cloudinary.uploader.upload(
                                     cover_file,
@@ -276,19 +291,23 @@ if has_cloud:
 
                     file_bytes_size = res.get("bytes", 0)
                     size_display = format_file_size(file_bytes_size)
-                    cover_url = f"https://res.cloudinary.com/{cloud_name_str}/image/upload/story_covers/{quote(book_title)}"
+
+                    # 取得真實有效的封面網址
+                    cover_url = cover_map.get(book_title)
 
                     with col:
                         with st.container(border=True):
-                            try:
+                            # 顯示封面
+                            if cover_url:
                                 st.image(cover_url, use_container_width=True)
-                            except Exception:
+                            else:
                                 st.caption("📷 尚無封面圖片")
 
                             st.subheader(f"📘 {book_title}")
                             st.caption(
                                 f"📅 上傳：{date_display} ｜ 📦 大小：{size_display}"
                             )
+
                             b1, b2 = st.columns([2, 1])
                             with b1:
                                 if st.button(
@@ -320,6 +339,52 @@ if has_cloud:
                                         pass
                                     st.toast(f"已刪除《{book_title}》")
                                     st.rerun()
+
+                            # 【重點修改】：在總書櫃卡片上新增「封面管理彈跳面板」
+                            with st.popover(
+                                "🖼️ 編輯/補傳封面", use_container_width=True
+                            ):
+                                edit_cover_file = st.file_uploader(
+                                    "選擇封面圖片",
+                                    type=["png", "jpg", "jpeg"],
+                                    key=f"cov_up_{public_id}",
+                                )
+                                c_col1, c_col2 = st.columns(2)
+                                with c_col1:
+                                    if st.button(
+                                        "💾 覆蓋/補傳",
+                                        key=f"btn_up_{public_id}",
+                                        use_container_width=True,
+                                    ):
+                                        if edit_cover_file:
+                                            with st.spinner("正在上傳封面..."):
+                                                safe_filename = quote(book_title)
+                                                cloudinary.uploader.upload(
+                                                    edit_cover_file,
+                                                    resource_type="image",
+                                                    public_id=f"story_covers/{safe_filename}",
+                                                    overwrite=True,
+                                                )
+                                                st.toast("封面已更新！")
+                                                st.rerun()
+                                        else:
+                                            st.warning("請先選擇圖片檔案")
+                                with c_col2:
+                                    if st.button(
+                                        "🗑️ 刪除封面",
+                                        key=f"btn_del_cov_{public_id}",
+                                        use_container_width=True,
+                                    ):
+                                        try:
+                                            safe_filename = quote(book_title)
+                                            cloudinary.uploader.destroy(
+                                                f"story_covers/{safe_filename}",
+                                                resource_type="image",
+                                            )
+                                            st.toast("封面已刪除！")
+                                            st.rerun()
+                                        except Exception as e:
+                                            st.error(f"刪除失敗：{e}")
 
         # ---------------- 模式 B：故事閱讀器頁面 ----------------
         else:
@@ -353,44 +418,13 @@ if has_cloud:
                 # ---------------- 側邊欄區域 ----------------
                 st.sidebar.divider()
 
-                # 【順序 1.5】：在閱讀時顯示書籍封面，並提供覆蓋/補上傳/刪除封面的功能
-                st.sidebar.header("🖼️ 書籍封面管理")
-                current_cover_url = f"https://res.cloudinary.com/{cloud_name_str}/image/upload/story_covers/{quote(book_name)}"
-                try:
-                    st.sidebar.image(current_cover_url, use_container_width=True)
-                except Exception:
-                    st.sidebar.caption("📷 尚無封面圖片")
-
-                with st.sidebar.expander("⚙️ 變更或刪除封面"):
-                    edit_cover_file = st.file_uploader(
-                        "上傳/覆蓋封面圖片", type=["png", "jpg", "jpeg"], key="edit_cover"
-                    )
-                    c_col1, c_col2 = st.columns(2)
-                    with c_col1:
-                        if st.button("💾 儲存封面", use_container_width=True):
-                            if edit_cover_file:
-                                with st.spinner("更新封面中..."):
-                                    cloudinary.uploader.upload(
-                                        edit_cover_file,
-                                        resource_type="image",
-                                        public_id=f"story_covers/{quote(book_name)}",
-                                        overwrite=True,
-                                    )
-                                    st.success("封面更新成功！")
-                                    st.rerun()
-                            else:
-                                st.warning("請先選擇圖片檔案")
-                    with c_col2:
-                        if st.button("🗑️ 刪除封面", use_container_width=True):
-                            try:
-                                cloudinary.uploader.destroy(
-                                    f"story_covers/{quote(book_name)}",
-                                    resource_type="image",
-                                )
-                                st.toast("封面已刪除")
-                                st.rerun()
-                            except Exception as e:
-                                st.error(f"刪除失敗：{e}")
+                # 【順序 1.5】：閱讀模式左側欄「單純展示封面」（管理移到了總書櫃）
+                st.sidebar.header("🖼️ 書籍封面")
+                reading_cover_url = cover_map.get(book_name)
+                if reading_cover_url:
+                    st.sidebar.image(reading_cover_url, use_container_width=True)
+                else:
+                    st.sidebar.caption("📷 本書尚無封面圖片")
 
                 st.sidebar.divider()
 
@@ -404,7 +438,7 @@ if has_cloud:
 
                 # 【順序 3】：章節切換與精簡版快轉進度
                 st.sidebar.header("📌 章節切換與進度")
-                
+
                 pct_value = st.sidebar.slider(
                     "🎯 快轉跳轉：",
                     min_value=0,
@@ -445,7 +479,8 @@ if has_cloud:
                     st.button(
                         "下一章 ➡️",
                         disabled=(
-                            st.session_state.ch_index >= st.session_state.max_chapters - 1
+                            st.session_state.ch_index
+                            >= st.session_state.max_chapters - 1
                         ),
                         use_container_width=True,
                         key="side_next",
@@ -478,7 +513,8 @@ if has_cloud:
 
                 with st.container(border=True):
                     st.session_state.auto_play = st.toggle(
-                        "▶️ 切換章節自動播放音樂", value=st.session_state.auto_play
+                        "▶️ 切換章節自動播放音樂",
+                        value=st.session_state.auto_play,
                     )
 
                 st.subheader(current_ch["title"])
@@ -497,7 +533,8 @@ if has_cloud:
                     st.button(
                         "下一章 ➡️",
                         disabled=(
-                            st.session_state.ch_index >= st.session_state.max_chapters - 1
+                            st.session_state.ch_index
+                            >= st.session_state.max_chapters - 1
                         ),
                         use_container_width=True,
                         key="top_next",
@@ -542,7 +579,8 @@ if has_cloud:
                     st.button(
                         "下一章 ➡️",
                         disabled=(
-                            st.session_state.ch_index >= st.session_state.max_chapters - 1
+                            st.session_state.ch_index
+                            >= st.session_state.max_chapters - 1
                         ),
                         use_container_width=True,
                         key="bot_next",
