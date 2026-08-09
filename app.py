@@ -31,7 +31,7 @@ st.session_state.theme_mode = st.sidebar.radio(
     key="theme_radio",
 )
 
-# 4. 精準修復黑底模式下拉選單與手機字體高對比度 CSS
+# 4. 精準修復黑底模式 Popover 氣泡選單與手機字體高對比度 CSS
 if st.session_state.theme_mode == "🌙 黑底模式":
     css_style = """
     <style>
@@ -39,26 +39,14 @@ if st.session_state.theme_mode == "🌙 黑底模式":
         [data-testid="stSidebar"], [data-testid="stSidebarContent"] { background-color: #161920 !important; }
         [data-testid="stSidebar"] *, [data-testid="stSidebar"] label, [data-testid="stSidebar"] p { color: #f0f2f6 !important; }
 
-        /* 精準修復紅框下拉選單 (BaseWeb Select) 字體與背景高對比度 */
-        div[data-baseweb="select"] > div {
-            background-color: #262c36 !important;
-            border: 1px solid #4f5866 !important;
-            border-radius: 8px !important;
-        }
-        div[data-baseweb="select"] * {
-            color: #ffffff !important;
-            background-color: transparent !important;
-        }
-        /* 彈出選單項目 */
-        ul[data-testid="stSelectboxVirtualDropdown"] {
+        /* 精準修復 Popover 氣泡彈出視窗黑底高對比度 */
+        div[data-testid="stPopoverBody"] {
             background-color: #1f232a !important;
+            border: 1px solid #30363d !important;
+            border-radius: 12px !important;
         }
-        ul[data-testid="stSelectboxVirtualDropdown"] li {
+        div[data-testid="stPopoverBody"] * {
             color: #ffffff !important;
-        }
-        /* 禁止手機打字游標跳出 */
-        div[data-baseweb="select"] input {
-            caret-color: transparent !important;
         }
 
         /* 內文區域卡片 */
@@ -69,7 +57,7 @@ if st.session_state.theme_mode == "🌙 黑底模式":
         }
 
         /* 按鈕高對比度樣式 */
-        div.stButton > button { 
+        div.stButton > button, div[data-testid="stPopover"] > button { 
             background-color: #262c36 !important; 
             color: #ffffff !important; 
             border: 1px solid #4f5866 !important; 
@@ -92,13 +80,10 @@ else:
         [data-testid="stSidebar"], [data-testid="stSidebarContent"] { background-color: #ffffff !important; }
         [data-testid="stSidebar"] *, [data-testid="stSidebar"] label, [data-testid="stSidebar"] p { color: #1f232a !important; }
 
-        div[data-baseweb="select"] > div {
+        div[data-testid="stPopoverBody"] {
             background-color: #ffffff !important;
-            border: 1px solid #c0c4cc !important;
-            border-radius: 8px !important;
-        }
-        div[data-baseweb="select"] * {
-            color: #1f232a !important;
+            border: 1px solid #e1e4e8 !important;
+            border-radius: 12px !important;
         }
 
         div[data-testid="stContainer"] { 
@@ -106,7 +91,7 @@ else:
             border: 1px solid #e1e4e8 !important; 
             border-radius: 12px; 
         }
-        div.stButton > button { 
+        div.stButton > button, div[data-testid="stPopover"] > button { 
             background-color: #ffffff !important; 
             color: #1f232a !important; 
             border: 1px solid #c0c4cc !important; 
@@ -151,8 +136,8 @@ def next_chapter_cb(total_chapters):
         st.session_state.ch_index += 1
 
 
-def on_select_change_cb(chapter_titles):
-    selected = st.session_state.get("sb_side_select")
+def on_radio_change_cb(chapter_titles):
+    selected = st.session_state.get("sb_popover_radio")
     if selected in chapter_titles:
         st.session_state.ch_index = chapter_titles.index(selected)
 
@@ -325,17 +310,21 @@ if has_cloud:
 
                 st.sidebar.divider()
 
-                # 下拉選單：綁定 on_change 回呼函式
-                st.sidebar.selectbox(
-                    "📌 快速選章",
-                    chapter_titles,
-                    index=st.session_state.ch_index,
-                    key="sb_side_select",
-                    on_change=on_select_change_cb,
-                    args=(chapter_titles,),
-                )
+                # 關鍵修改：改用 st.popover + st.radio，純點擊選單，100% 杜絕手機鍵盤彈出
+                with st.sidebar.popover(
+                    f"📌 章節跳轉：{current_ch['title']}",
+                    use_container_width=True,
+                ):
+                    st.radio(
+                        "請選擇要閱讀的章節：",
+                        chapter_titles,
+                        index=st.session_state.ch_index,
+                        key="sb_popover_radio",
+                        on_change=on_radio_change_cb,
+                        args=(chapter_titles,),
+                    )
 
-                # 上下章按鈕：綁定 on_click 回呼函式
+                # 上下章按鈕：綁定 Callbacks 回呼函式
                 nav_c1, nav_c2 = st.sidebar.columns(2)
                 with nav_c1:
                     st.button(
