@@ -29,7 +29,7 @@ def init_cloudinary():
     return True
 
 
-# 3. 初始化 Session State (記憶選中的書籍與目前章節索引)
+# 3. 初始化 Session State 記憶狀態
 if "selected_book_id" not in st.session_state:
     st.session_state.selected_book_id = None
 if "ch_index" not in st.session_state:
@@ -73,58 +73,36 @@ def parse_docx_bytes(file_bytes):
     return chapters
 
 
-def render_nav_buttons(loc_key, total_chapters):
-    """渲染導航控制按鈕的通用函式 (需要獨立的 key 防止元件衝突)"""
-    col1, col2, col3 = st.columns([1, 2, 1])
-
-    with col1:
-        is_first = st.session_state.ch_index <= 0
-        if st.button(
-            "⬅️ 上一章",
-            key=f"prev_{loc_key}",
-            disabled=is_first,
-            use_container_width=True,
-        ):
-            st.session_state.ch_index -= 1
-            st.rerun()
-
-    with col3:
-        is_last = st.session_state.ch_index >= total_chapters - 1
-        if st.button(
-            "下一章 ➡️",
-            key=f"next_{loc_key}",
-            disabled=is_last,
-            use_container_width=True,
-        ):
-            st.session_state.ch_index += 1
-            st.rerun()
-
-
 has_cloud = init_cloudinary()
 
-# 4. 側邊欄：新增故事入庫
-st.sidebar.header("📤 新增故事入庫")
-new_file = st.sidebar.file_uploader("上傳 Word 故事檔 (.docx)", type=["docx"])
+# 4. 側邊欄：依據「選書狀態」呈現上傳介面或閱讀懸浮控制區
+if has_cloud:
+    if not st.session_state.selected_book_id:
+        # 未選書時：顯示新增故事上傳區
+        st.sidebar.header("📤 新增故事入庫")
+        new_file = st.sidebar.file_uploader(
+            "上傳 Word 故事檔 (.docx)", type=["docx"]
+        )
 
-if new_file and has_cloud:
-    if st.sidebar.button("💾 確認存入雲端書櫃"):
-        with st.spinner("正在上傳至雲端書櫃..."):
-            try:
-                safe_filename = quote(new_file.name)
-                cloudinary.uploader.upload(
-                    new_file,
-                    resource_type="raw",
-                    public_id=f"story_books/{safe_filename}",
-                    overwrite=True,
-                )
-                st.sidebar.success(f"《{new_file.name}》已成功收錄進書櫃！")
-                st.rerun()
-            except Exception as e:
-                st.sidebar.error(f"上傳失敗：{e}")
+        if new_file:
+            if st.sidebar.button("💾 確認存入雲端書櫃"):
+                with st.spinner("正在上傳至雲端書櫃..."):
+                    try:
+                        safe_filename = quote(new_file.name)
+                        cloudinary.uploader.upload(
+                            new_file,
+                            resource_type="raw",
+                            public_id=f"story_books/{safe_filename}",
+                            overwrite=True,
+                        )
+                        st.sidebar.success(
+                            f"《{new_file.name}》已成功收錄進書櫃！"
+                        )
+                        st.rerun()
+                    except Exception as e:
+                        st.sidebar.error(f"上傳失敗：{e}")
 
-# 5. 主區域：圖書卡片展覽區
-st.header("📖 您的雲端故事書櫃")
-
+# 5. 主區域：圖書卡片展覽區與閱讀器渲染
 if has_cloud:
     try:
         resources = cloudinary.api.resources(
@@ -132,56 +110,54 @@ if has_cloud:
         )["resources"]
 
         if resources:
-            cols = st.columns(3)
+            # 模式 A：尚未選取書籍，顯示 3 欄式卡片書櫃
+            if not st.session_state.selected_book_id:
+                st.header("📖 您的雲端故事書櫃")
+                cols = st.columns(3)
 
-            for idx, res in enumerate(resources):
-                col = cols[idx % 3]
-                public_id = res["public_id"]
-                raw_title = public_id.replace("story_books/", "")
-                book_title = unquote(raw_title)
+                for idx, res in enumerate(resources):
+                    col = cols[idx % 3]
+                    public_id = res["public_id"]
+                    raw_title = public_id.replace("story_books/", "")
+                    book_title = unquote(raw_title)
 
-                created_at_str = res.get("created_at", "")
-                if created_at_str:
-                    dt = datetime.strptime(
-                        created_at_str, "%Y-%m-%dT%H:%M:%SZ"
-                    )
-                    date_display = dt.strftime("%Y-%m-%d %H:%M")
-                else:
-                    date_display = "未知時間"
+                    created_at_str = res.get("created_at", "")
+                    if created_at_str:
+                        dt = datetime.strptime(
+                            created_at_str, "%Y-%m-%dT%H:%M:%SZ"
+                        )
+                        date_display = dt.strftime("%Y-%m-%d %H:%M")
+                    else:
+                        date_display = "未知時間"
 
-                with col:
-                    with st.container(border=True):
-                        st.subheader(f"📘 {book_title}")
-                        st.caption(f"📅 上傳時間：{date_display}")
+                    with col:
+                        with st.container(border=True):
+                            st.subheader(f"📘 {book_title}")
+                            st.caption(f"📅 上傳時間：{date_display}")
 
-                        b_col1, b_col2 = st.columns([2, 1])
-                        with b_col1:
-                            if st.button(
-                                "📖 點擊閱讀", key=f"read_{public_id}"
-                            ):
-                                st.session_state.selected_book_id = public_id
-                                st.session_state.ch_index = (
-                                    0  # 切換書籍時重置章節為第一章
-                                )
-                                st.rerun()
-
-                        with b_col2:
-                            if st.button("🗑️ 刪除", key=f"del_{public_id}"):
-                                cloudinary.uploader.destroy(
-                                    public_id, resource_type="raw"
-                                )
-                                if (
-                                    st.session_state.selected_book_id
-                                    == public_id
+                            b_col1, b_col2 = st.columns([2, 1])
+                            with b_col1:
+                                if st.button(
+                                    "📖 點擊閱讀", key=f"read_{public_id}"
                                 ):
-                                    st.session_state.selected_book_id = None
-                                st.toast(f"已從雲端刪除《{book_title}》")
-                                st.rerun()
+                                    st.session_state.selected_book_id = (
+                                        public_id
+                                    )
+                                    st.session_state.ch_index = 0
+                                    st.rerun()
 
-            st.divider()
+                            with b_col2:
+                                if st.button(
+                                    "🗑️ 刪除", key=f"del_{public_id}"
+                                ):
+                                    cloudinary.uploader.destroy(
+                                        public_id, resource_type="raw"
+                                    )
+                                    st.toast(f"已從雲端刪除《{book_title}》")
+                                    st.rerun()
 
-            # 6. 當點擊閱讀時，進入故事閱讀模式
-            if st.session_state.selected_book_id:
+            # 模式 B：已點擊閱讀，進入閱讀器模式（將控制項全部置於側邊欄）
+            else:
                 selected_res = next(
                     (
                         r
@@ -196,48 +172,78 @@ if has_cloud:
                         selected_res["public_id"].replace("story_books/", "")
                     )
 
-                    st.subheader(f"📖 當前正在閱讀：《{book_name}》")
+                    # 從雲端下載並解析文章
                     response = requests.get(book_url)
                     chapters = parse_docx_bytes(response.content)
                     total_chapters = len(chapters)
 
-                    # 確保章節索引沒有越界
                     if st.session_state.ch_index >= total_chapters:
                         st.session_state.ch_index = 0
 
                     chapter_titles = [ch["title"] for ch in chapters]
 
-                    # 下拉選單：同步當前章節索引
-                    selected_ch_title = st.selectbox(
-                        "📌 快速跳轉章節",
-                        chapter_titles,
-                        index=st.session_state.ch_index,
-                        key="sb_chapter_select",
-                    )
-
-                    # 如果使用者自行由下拉選單切換章節，更新 session_state
-                    new_selected_idx = chapter_titles.index(selected_ch_title)
-                    if new_selected_idx != st.session_state.ch_index:
-                        st.session_state.ch_index = new_selected_idx
+                    # ----------------- 側邊欄：懸浮控制面板 -----------------
+                    st.sidebar.header("🎛️ 閱讀與音樂控制箱")
+                    if st.sidebar.button(
+                        "📚 返回圖書總書櫃", use_container_width=True
+                    ):
+                        st.session_state.selected_book_id = None
                         st.rerun()
 
-                    # 頂部導航按鈕 (Top Navigation)
-                    render_nav_buttons("top", total_chapters)
+                    st.sidebar.divider()
+                    st.sidebar.subheader(f"📖 《{book_name}》")
 
+                    # 側邊欄：快速跳轉章節選單
+                    selected_ch_title = st.sidebar.selectbox(
+                        "📌 快速選擇章節",
+                        chapter_titles,
+                        index=st.session_state.ch_index,
+                        key="sb_side_chapter_select",
+                    )
+
+                    new_idx = chapter_titles.index(selected_ch_title)
+                    if new_idx != st.session_state.ch_index:
+                        st.session_state.ch_index = new_idx
+                        st.rerun()
+
+                    # 側邊欄：上一章 / 下一章 控制按鈕
+                    nav_c1, nav_c2 = st.sidebar.columns(2)
+                    with nav_c1:
+                        if st.button(
+                            "⬅️ 上一章",
+                            disabled=(st.session_state.ch_index <= 0),
+                            use_container_width=True,
+                        ):
+                            st.session_state.ch_index -= 1
+                            st.rerun()
+                    with nav_c2:
+                        if st.button(
+                            "下一章 ➡️",
+                            disabled=(
+                                st.session_state.ch_index >= total_chapters - 1
+                            ),
+                            use_container_width=True,
+                        ):
+                            st.session_state.ch_index += 1
+                            st.rerun()
+
+                    st.sidebar.divider()
+
+                    # 側邊欄：音樂播放器（隨時可點擊暫停/播放）
                     current_ch = chapters[st.session_state.ch_index]
-
-                    st.divider()
-                    st.header(current_ch["title"])
-
-                    # 背景音樂播放器
+                    st.sidebar.subheader("🎵 章節背景音樂")
                     if current_ch["music_url"]:
                         url = current_ch["music_url"]
                         if "youtube.com" in url or "youtu.be" in url:
-                            st.video(url)
+                            st.sidebar.video(url)
                         else:
-                            st.audio(url)
-                        st.success("🎵 背景音樂載入成功！")
+                            st.sidebar.audio(url)
+                    else:
+                        st.sidebar.caption("本章節未設定背景音樂。")
 
+                    # ----------------- 主要區域：純粹內文閱讀區 -----------------
+                    st.header(f"《{book_name}》")
+                    st.subheader(current_ch["title"])
                     st.divider()
 
                     # 還原排版與段落留白
@@ -246,11 +252,6 @@ if has_cloud:
                             st.markdown("&nbsp;")
                         else:
                             st.write(line)
-
-                    st.divider()
-
-                    # 底部導航按鈕 (Bottom Navigation)
-                    render_nav_buttons("bottom", total_chapters)
 
         else:
             st.info("📚 雲端書櫃目前是空的，請在左側上傳您的第一本故事書！")
