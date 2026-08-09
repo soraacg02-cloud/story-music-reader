@@ -14,7 +14,7 @@ st.set_page_config(
     page_title="雲端沉浸式故事音樂書櫃", page_icon="📚", layout="wide"
 )
 
-# 2. Session State 記憶狀態初始化 (全域共享黑板)
+# 2. Session State 記憶狀態初始化
 if "selected_book_id" not in st.session_state:
     st.session_state.selected_book_id = None
 if "ch_index" not in st.session_state:
@@ -28,7 +28,7 @@ if "max_chapters" not in st.session_state:
 if "chapter_titles" not in st.session_state:
     st.session_state.chapter_titles = []
 if "reading_pct" not in st.session_state:
-    st.session_state.reading_pct = 0  # 關鍵：統一控管的閱讀百分比狀態
+    st.session_state.reading_pct = 0
 
 # ---------------- 【左側欄順序 1】：視覺風格 ----------------
 st.sidebar.header("🎨 視覺風格")
@@ -107,17 +107,29 @@ def init_cloudinary():
     return True
 
 
-# 5. 安全狀態同步回呼函式 (State Sync Callbacks)
+# 檔案大小可讀化轉換函式
+def format_file_size(size_in_bytes):
+    if not size_in_bytes or size_in_bytes <= 0:
+        return "大小未知"
+    if size_in_bytes < 1024:
+        return f"{size_in_bytes} Bytes"
+    elif size_in_bytes < 1024 * 1024:
+        return f"{size_in_bytes / 1024:.1f} KB"
+    else:
+        return f"{size_in_bytes / (1024 * 1024):.2f} MB"
+
+
+# 5. 安全狀態同步回呼函式
 def prev_chapter_cb():
     if st.session_state.ch_index > 0:
         st.session_state.ch_index -= 1
-        st.session_state.reading_pct = 0  # 換章時強制將滑桿狀態與黑板同步改為 0%
+        st.session_state.reading_pct = 0
 
 
 def next_chapter_cb():
     if st.session_state.ch_index < st.session_state.max_chapters - 1:
         st.session_state.ch_index += 1
-        st.session_state.reading_pct = 0  # 換章時強制將滑桿狀態與黑板同步改為 0%
+        st.session_state.reading_pct = 0
 
 
 def on_radio_change_cb():
@@ -125,11 +137,10 @@ def on_radio_change_cb():
     titles = st.session_state.get("chapter_titles", [])
     if selected in titles:
         st.session_state.ch_index = titles.index(selected)
-        st.session_state.reading_pct = 0  # 下拉選單選章時，同步重置為 0%
+        st.session_state.reading_pct = 0
 
 
 def on_slider_change_cb():
-    # 當使用者主動拉動左側滑桿時，同步更新黑板數值
     st.session_state.reading_pct = st.session_state.get("sb_slider_pct", 0)
 
 
@@ -182,7 +193,7 @@ def render_music_player(music_url, is_autoplay):
 
 has_cloud = init_cloudinary()
 
-# 強制自動清除舊的 JavaScript 頂層殘影，維持頁面乾淨
+# 清除舊的 DOM 殘影
 st.components.v1.html(
     """
 <script>
@@ -249,10 +260,15 @@ if has_cloud:
                         else "未知時間"
                     )
 
+                    file_bytes_size = res.get("bytes", 0)
+                    size_display = format_file_size(file_bytes_size)
+
                     with col:
                         with st.container(border=True):
                             st.subheader(f"📘 {book_title}")
-                            st.caption(f"📅 上傳時間：{date_display}")
+                            st.caption(
+                                f"📅 上傳：{date_display} ｜ 📦 大小：{size_display}"
+                            )
                             b1, b2 = st.columns([2, 1])
                             with b1:
                                 if st.button(
@@ -307,7 +323,7 @@ if has_cloud:
                 content_lines = current_ch["content"]
                 total_lines = len(content_lines)
 
-                # ---------------- 側邊欄區域（四大順序完美同步） ----------------
+                # ---------------- 側邊欄區域 ----------------
                 st.sidebar.divider()
 
                 # 【順序 2】：音樂盒
@@ -318,27 +334,26 @@ if has_cloud:
 
                 st.sidebar.divider()
 
-                # 【順序 3】：章節切換與雙向同步快轉進度
+                # 【順序 3】：章節切換與快轉跳轉進度
                 st.sidebar.header("📌 章節切換與進度")
                 
-                # 核心升級：滑桿數值直接綁定全域共享黑板 (st.session_state.reading_pct)
                 pct_value = st.sidebar.slider(
                     "🎯 快轉跳轉 (拖動或點擊 %)：",
                     min_value=0,
                     max_value=100,
-                    value=st.session_state.reading_pct,  # 從全域黑板讀取最新數值
+                    value=st.session_state.reading_pct,
                     step=5,
                     format="%d%%",
                     key="sb_slider_pct",
                     on_change=on_slider_change_cb,
                 )
 
-                # 換算起始段落
-                start_line_idx = int(total_lines * (pct_value / 100.0))
-                if start_line_idx >= total_lines:
-                    start_line_idx = max(0, total_lines - 1)
+                # 計算目標錨點 ID
+                target_line_idx = int(total_lines * (pct_value / 100.0))
+                if target_line_idx >= total_lines:
+                    target_line_idx = max(0, total_lines - 1)
 
-                st.sidebar.caption(f"📍 當前進度：**{pct_value}%** （第 {start_line_idx + 1}/{total_lines} 段）")
+                st.sidebar.caption(f"📍 當前定位：**{pct_value}%** （第 {target_line_idx + 1}/{total_lines} 段）")
 
                 with st.sidebar.popover(
                     f"跳轉章節：{current_ch['title']}",
@@ -384,17 +399,6 @@ if has_cloud:
                     st.rerun()
 
                 # ---------------- 文章閱讀主區域 ----------------
-                # 當閱讀百分比為 0% 時（例如剛點換頁），自動平滑捲回網頁頂部
-                if pct_value == 0:
-                    st.components.v1.html(
-                        """
-                    <script>
-                        window.parent.scrollTo({top: 0, behavior: 'smooth'});
-                    </script>
-                    """,
-                        height=0,
-                    )
-
                 st.header(f"《{book_name}》")
 
                 # 自動播放開關
@@ -429,13 +433,28 @@ if has_cloud:
 
                 st.divider()
 
-                # 文章段落渲染（絕對與左側快轉百分比精準同步）
-                display_lines = content_lines[start_line_idx:]
-                for line in display_lines:
+                # 關鍵突破：完整渲染所有段落（保留前段內容），並注入 HTML 門牌錨點（Anchor ID）
+                for idx, line in enumerate(content_lines):
+                    anchor_html = f'<div id="line-anchor-{idx}"></div>'
+                    st.markdown(anchor_html, unsafe_allow_html=True)
                     if line.strip() == "":
                         st.markdown("&nbsp;")
                     else:
                         st.write(line)
+
+                # 關鍵技術：透過 JavaScript 自動將視窗平滑捲動到目標錨點
+                scroll_script = f"""
+                <script>
+                    setTimeout(function() {{
+                        const pDoc = window.parent.document;
+                        const targetAnchor = pDoc.getElementById("line-anchor-{target_line_idx}");
+                        if (targetAnchor) {{
+                            targetAnchor.scrollIntoView({{ behavior: 'smooth', block: 'start' }});
+                        }}
+                    }}, 200);
+                </script>
+                """
+                st.components.v1.html(scroll_script, height=0)
 
                 st.divider()
 
