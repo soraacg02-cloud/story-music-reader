@@ -37,7 +37,7 @@ st.session_state.theme_mode = st.sidebar.radio(
     key="theme_radio",
 )
 
-# 3. 高對比度與綠框磁吸懸浮 CSS 設定
+# 3. 高對比度與極簡綠框懸浮 CSS 設定
 if st.session_state.theme_mode == "🌙 黑底模式":
     bg_col, sidebar_bg, card_bg, border_col, text_col, button_bg = (
         "#0e1117",
@@ -85,13 +85,21 @@ css_style = f"""
         border-radius: 8px !important;
     }}
 
-    /* 關鍵效果：將包含滑桿與進度條的綠框卡片磁吸固定於頂端 */
+    /* 關鍵極簡修飾：壓縮綠框卡片上下高度，縮減 70% 版面占用 */
     div[data-testid="stVerticalBlock"] > div:has(div.stSlider) {{
         position: sticky !important;
         top: 3rem !important;
         z-index: 999 !important;
         background-color: {card_bg} !important;
-        box-shadow: 0px 4px 12px rgba(0, 0, 0, 0.3) !important;
+        padding: 4px 12px !important;
+        border-radius: 8px !important;
+        box-shadow: 0px 2px 8px rgba(0, 0, 0, 0.25) !important;
+    }}
+
+    /* 隱藏滑桿元件多餘的預設間距 */
+    div[data-testid="stSlider"] {{
+        padding-top: 0px !important;
+        padding-bottom: 0px !important;
     }}
 
     p, h1, h2, h3, h4, span, label {{ color: {text_col} !important; }}
@@ -181,7 +189,7 @@ def render_music_player(music_url, is_autoplay):
 
 has_cloud = init_cloudinary()
 
-# 關鍵防護：每次載入時強制清空瀏覽器頂層殘留的舊紅框元素
+# 強制自動清除舊的 JavaScript 頂層紅框元素殘影
 st.components.v1.html(
     """
 <script>
@@ -369,36 +377,28 @@ if has_cloud:
 
                 st.subheader(current_ch["title"])
 
-                # 保留唯一快轉區：綠框卡片（CSS 已設為 sticky 磁吸懸浮頂端）
+                # 【精簡版懸浮綠框快轉卡片】：只保留單行精簡快轉滑桿，省下 70% 版面空間
                 content_lines = current_ch["content"]
                 total_lines = len(content_lines)
 
                 with st.container(border=True):
                     pct_key = f"pct_jump_{selected_res['public_id']}_{st.session_state.ch_index}"
 
-                    st.markdown("🎯 **閱讀進度與快轉跳轉（%）**")
+                    # 將標題與進度文字簡化整合進 Slider Label 中
                     pct_value = st.slider(
-                        "拖動或點擊下方百分比即可直接跳轉文章位置：",
+                        "🎯 快轉跳轉 (拖動或點擊 %)：",
                         min_value=0,
                         max_value=100,
                         value=0,
                         step=5,
                         format="%d%%",
                         key=pct_key,
-                        help="點擊或滑動滑桿，內文將立即從選定的百分比位置開始呈現",
                     )
-
-                    # 動態視覺進度條
-                    st.progress(pct_value / 100.0)
 
                     # 根據選定的百分比換算起始段落索引
                     start_line_idx = int(total_lines * (pct_value / 100.0))
                     if start_line_idx >= total_lines:
                         start_line_idx = max(0, total_lines - 1)
-
-                    st.caption(
-                        f"📍 當前進度：**{pct_value}%** （定位於第 {start_line_idx + 1} / {total_lines} 段）"
-                    )
 
                 st.divider()
 
