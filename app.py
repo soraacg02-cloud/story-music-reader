@@ -14,7 +14,7 @@ st.set_page_config(
     page_title="雲端沉浸式故事音樂書櫃", page_icon="📚", layout="wide"
 )
 
-# 2. Session State 記憶狀態初始化
+# 2. Session State 記憶狀態初始化 (全域共享黑板)
 if "selected_book_id" not in st.session_state:
     st.session_state.selected_book_id = None
 if "ch_index" not in st.session_state:
@@ -27,6 +27,8 @@ if "max_chapters" not in st.session_state:
     st.session_state.max_chapters = 1
 if "chapter_titles" not in st.session_state:
     st.session_state.chapter_titles = []
+if "reading_pct" not in st.session_state:
+    st.session_state.reading_pct = 0  # 關鍵：統一控管的閱讀百分比狀態
 
 # ---------------- 【左側欄順序 1】：視覺風格 ----------------
 st.sidebar.header("🎨 視覺風格")
@@ -105,15 +107,17 @@ def init_cloudinary():
     return True
 
 
-# 5. 安全無參數回呼函式
+# 5. 安全狀態同步回呼函式 (State Sync Callbacks)
 def prev_chapter_cb():
     if st.session_state.ch_index > 0:
         st.session_state.ch_index -= 1
+        st.session_state.reading_pct = 0  # 換章時強制將滑桿狀態與黑板同步改為 0%
 
 
 def next_chapter_cb():
     if st.session_state.ch_index < st.session_state.max_chapters - 1:
         st.session_state.ch_index += 1
+        st.session_state.reading_pct = 0  # 換章時強制將滑桿狀態與黑板同步改為 0%
 
 
 def on_radio_change_cb():
@@ -121,6 +125,12 @@ def on_radio_change_cb():
     titles = st.session_state.get("chapter_titles", [])
     if selected in titles:
         st.session_state.ch_index = titles.index(selected)
+        st.session_state.reading_pct = 0  # 下拉選單選章時，同步重置為 0%
+
+
+def on_slider_change_cb():
+    # 當使用者主動拉動左側滑桿時，同步更新黑板數值
+    st.session_state.reading_pct = st.session_state.get("sb_slider_pct", 0)
 
 
 # 6. Word 文件解析器
@@ -254,6 +264,7 @@ if has_cloud:
                                         public_id
                                     )
                                     st.session_state.ch_index = 0
+                                    st.session_state.reading_pct = 0
                                     st.rerun()
                             with b2:
                                 if st.button(
@@ -296,7 +307,7 @@ if has_cloud:
                 content_lines = current_ch["content"]
                 total_lines = len(content_lines)
 
-                # ---------------- 側邊欄區域（四大順序完美重構） ----------------
+                # ---------------- 側邊欄區域（四大順序完美同步） ----------------
                 st.sidebar.divider()
 
                 # 【順序 2】：音樂盒
@@ -307,25 +318,27 @@ if has_cloud:
 
                 st.sidebar.divider()
 
-                # 【順序 3】：章節切換與常態固定快轉進度
+                # 【順序 3】：章節切換與雙向同步快轉進度
                 st.sidebar.header("📌 章節切換與進度")
                 
-                # 關鍵升級：將快轉進度滑桿完全收納至左側邊欄（絕對固定不移位）
-                pct_key = f"sb_pct_{selected_res['public_id']}_{st.session_state.ch_index}"
+                # 核心升級：滑桿數值直接綁定全域共享黑板 (st.session_state.reading_pct)
                 pct_value = st.sidebar.slider(
                     "🎯 快轉跳轉 (拖動或點擊 %)：",
                     min_value=0,
                     max_value=100,
-                    value=0,
+                    value=st.session_state.reading_pct,  # 從全域黑板讀取最新數值
                     step=5,
                     format="%d%%",
-                    key=pct_key,
+                    key="sb_slider_pct",
+                    on_change=on_slider_change_cb,
                 )
+
+                # 換算起始段落
                 start_line_idx = int(total_lines * (pct_value / 100.0))
                 if start_line_idx >= total_lines:
                     start_line_idx = max(0, total_lines - 1)
 
-                st.sidebar.caption(f"📍 進度：**{pct_value}%** （第 {start_line_idx + 1}/{total_lines} 段）")
+                st.sidebar.caption(f"📍 當前進度：**{pct_value}%** （第 {start_line_idx + 1}/{total_lines} 段）")
 
                 with st.sidebar.popover(
                     f"跳轉章節：{current_ch['title']}",
@@ -367,9 +380,21 @@ if has_cloud:
                     "📚 返回圖書總書櫃", use_container_width=True
                 ):
                     st.session_state.selected_book_id = None
+                    st.session_state.reading_pct = 0
                     st.rerun()
 
-                # ---------------- 文章閱讀主區域（極致純粹清爽） ----------------
+                # ---------------- 文章閱讀主區域 ----------------
+                # 當閱讀百分比為 0% 時（例如剛點換頁），自動平滑捲回網頁頂部
+                if pct_value == 0:
+                    st.components.v1.html(
+                        """
+                    <script>
+                        window.parent.scrollTo({top: 0, behavior: 'smooth'});
+                    </script>
+                    """,
+                        height=0,
+                    )
+
                 st.header(f"《{book_name}》")
 
                 # 自動播放開關
@@ -404,7 +429,7 @@ if has_cloud:
 
                 st.divider()
 
-                # 文章段落渲染（完全無任何卡片遮擋，視野 100% 釋放）
+                # 文章段落渲染（絕對與左側快轉百分比精準同步）
                 display_lines = content_lines[start_line_idx:]
                 for line in display_lines:
                     if line.strip() == "":
