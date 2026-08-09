@@ -39,7 +39,7 @@ st.session_state.theme_mode = st.sidebar.radio(
     key="theme_radio",
 )
 
-# 3. 高對比度與主題顏色 CSS 設定 (修正白底模式下側邊欄文字看不清楚的問題)
+# 3. 高對比度與主題顏色 CSS 設定 (支援動態深淺色主題)
 if st.session_state.theme_mode == "🌙 黑底模式":
     bg_col, sidebar_bg, card_bg, border_col, text_col, button_bg = (
         "#0e1117",
@@ -219,7 +219,13 @@ if has_cloud:
             type="upload", prefix="story_books/", resource_type="raw"
         )["resources"]
 
-        # 2. 抓取所有已上傳的圖片 (image)，建立精準的【書名 ➡️ 圖片真實網址】對照字典
+        # 2. 建立書籍對照字典 {書名: public_id}
+        book_options_map = {}
+        for r in resources:
+            b_title = unquote(r["public_id"].replace("story_books/", ""))
+            book_options_map[b_title] = r["public_id"]
+
+        # 3. 抓取所有已上傳的圖片 (image)，建立精準的【書名 ➡️ 圖片真實網址】對照字典
         cover_map = {}
         try:
             cover_resources = cloudinary.api.resources(
@@ -410,6 +416,34 @@ if has_cloud:
                 total_lines = len(content_lines)
 
                 # ---------------- 側邊欄區域 ----------------
+                st.sidebar.divider()
+
+                # 【重點新增】：在左側欄加入「快速切換書籍」下拉選單
+                st.sidebar.header("📚 快速切換書籍")
+                all_book_names = list(book_options_map.keys())
+                current_book_idx = (
+                    all_book_names.index(book_name)
+                    if book_name in all_book_names
+                    else 0
+                )
+                selected_target_book = st.sidebar.selectbox(
+                    "選擇其他書籍：",
+                    all_book_names,
+                    index=current_book_idx,
+                    key="sidebar_book_switch",
+                )
+                # 當選取的書籍與目前不同時，切換並重整
+                if (
+                    book_options_map.get(selected_target_book)
+                    != st.session_state.selected_book_id
+                ):
+                    st.session_state.selected_book_id = book_options_map[
+                        selected_target_book
+                    ]
+                    st.session_state.ch_index = 0
+                    st.session_state.reading_pct = 0
+                    st.rerun()
+
                 st.sidebar.divider()
 
                 st.sidebar.header(f"🖼️ {book_name}")
