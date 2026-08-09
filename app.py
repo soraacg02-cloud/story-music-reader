@@ -39,7 +39,7 @@ st.session_state.theme_mode = st.sidebar.radio(
     key="theme_radio",
 )
 
-# 3. 高對比度與主題顏色 CSS 設定 (包含手機版與黑底模式下側邊欄選單文字強化)
+# 3. 高對比度與主題顏色 CSS 設定 (修正白底模式下側邊欄文字看不清楚的問題)
 if st.session_state.theme_mode == "🌙 黑底模式":
     bg_col, sidebar_bg, card_bg, border_col, text_col, button_bg = (
         "#0e1117",
@@ -63,7 +63,7 @@ css_style = f"""
 <style>
     .stApp {{ background-color: {bg_col} !important; }}
     [data-testid="stSidebar"], [data-testid="stSidebarContent"] {{ background-color: {sidebar_bg} !important; }}
-    [data-testid="stSidebar"] *, [data-testid="stSidebar"] label, [data-testid="stSidebar"] p {{ color: #f0f2f6 !important; }}
+    [data-testid="stSidebar"] *, [data-testid="stSidebar"] label, [data-testid="stSidebar"] p {{ color: {text_col} !important; }}
 
     div[data-testid="stPopoverBody"] {{
         background-color: {card_bg} !important;
@@ -250,14 +250,12 @@ if has_cloud:
                     with st.spinner("正在上傳故事與封面..."):
                         try:
                             safe_filename = quote(new_file.name)
-                            # 上傳故事檔
                             cloudinary.uploader.upload(
                                 new_file,
                                 resource_type="raw",
                                 public_id=f"story_books/{safe_filename}",
                                 overwrite=True,
                             )
-                            # 上傳封面圖
                             if cover_file:
                                 cloudinary.uploader.upload(
                                     cover_file,
@@ -291,13 +289,10 @@ if has_cloud:
 
                     file_bytes_size = res.get("bytes", 0)
                     size_display = format_file_size(file_bytes_size)
-
-                    # 取得真實有效的封面網址
                     cover_url = cover_map.get(book_title)
 
                     with col:
                         with st.container(border=True):
-                            # 顯示封面
                             if cover_url:
                                 st.image(cover_url, use_container_width=True)
                             else:
@@ -340,7 +335,6 @@ if has_cloud:
                                     st.toast(f"已刪除《{book_title}》")
                                     st.rerun()
 
-                            # 總書櫃卡片上的「封面管理彈跳面板」
                             with st.popover(
                                 "🖼️ 編輯/補傳封面", use_container_width=True
                             ):
@@ -418,7 +412,6 @@ if has_cloud:
                 # ---------------- 側邊欄區域 ----------------
                 st.sidebar.divider()
 
-                # 【重點修改】：將左側欄標題動態改為對應的書名（檔名）
                 st.sidebar.header(f"🖼️ {book_name}")
                 reading_cover_url = cover_map.get(book_name)
                 if reading_cover_url:
@@ -428,7 +421,6 @@ if has_cloud:
 
                 st.sidebar.divider()
 
-                # 【順序 2】：音樂盒
                 st.sidebar.header("🎵 音樂盒")
                 render_music_player(
                     current_ch["music_url"], st.session_state.auto_play
@@ -436,7 +428,6 @@ if has_cloud:
 
                 st.sidebar.divider()
 
-                # 【順序 3】：章節切換與精簡版快轉進度
                 st.sidebar.header("📌 章節切換與進度")
 
                 pct_value = st.sidebar.slider(
@@ -489,7 +480,6 @@ if has_cloud:
 
                 st.sidebar.divider()
 
-                # 【順序 4】：控制面板
                 st.sidebar.header("🎛️ 控制面板")
                 if st.sidebar.button(
                     "📚 返回圖書總書櫃", use_container_width=True
