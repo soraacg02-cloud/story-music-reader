@@ -1,4 +1,5 @@
 import io
+from urllib.parse import quote, unquote
 import cloudinary
 import cloudinary.api
 import cloudinary.uploader
@@ -12,12 +13,12 @@ st.set_page_config(
 )
 st.title("📚 雲端沉浸式故事音樂書櫃")
 
-# 2. 初始化 Cloudinary 連線 (讀取 Secrets 設定)
+# 2. 初始化 Cloudinary 連線
 if "cloudinary" in st.secrets:
     cloudinary.config(
         cloud_name=st.secrets["cloudinary"]["cloud_name"],
-        api_key=st.secrets["cloudinary"]["api_key"],
-        api_secret=st.secrets["cloudinary"]["api_secret"],
+        api_key=str(st.secrets["cloudinary"]["api_key"]),
+        api_secret=str(st.secrets["cloudinary"]["api_secret"]),
         secure=True,
     )
 
@@ -60,18 +61,19 @@ def parse_docx_bytes(file_bytes):
     return chapters
 
 
-# 3. 側邊欄：新書上傳區 (同步上傳至 Cloudinary 雲端)
+# 3. 側邊欄：新增故事入庫 (加入 safe_filename 防止中文編碼錯誤)
 st.sidebar.header("📤 新增故事入庫")
 new_file = st.sidebar.file_uploader("上傳 Word 故事檔 (.docx)", type=["docx"])
 
 if new_file and "cloudinary" in st.secrets:
     if st.sidebar.button("💾 確認存入雲端書櫃"):
         with st.spinner("正在上傳至雲端書櫃..."):
-            # 上傳原始 Word 檔案至 Cloudinary 的 raw 目錄
+            # 關鍵修正：使用 quote 將中文檔名編碼成 ASCII 安全字元
+            safe_filename = quote(new_file.name)
             cloudinary.uploader.upload(
                 new_file,
                 resource_type="raw",
-                public_id=f"story_books/{new_file.name}",
+                public_id=f"story_books/{safe_filename}",
                 overwrite=True,
             )
             st.sidebar.success(f"《{new_file.name}》已成功收錄進書櫃！")
@@ -88,8 +90,11 @@ if "cloudinary" in st.secrets:
         )["resources"]
 
         if resources:
+            # 關鍵修正：解開 unquote 編碼，讓選單完美顯示原本的中文檔名
             book_options = {
-                res["public_id"].replace("story_books/", ""): res["secure_url"]
+                unquote(res["public_id"].replace("story_books/", "")): res[
+                    "secure_url"
+                ]
                 for res in resources
             }
             selected_book_name = st.sidebar.selectbox(
@@ -97,7 +102,6 @@ if "cloudinary" in st.secrets:
             )
 
             if selected_book_name:
-                # 下載選中的 Word 檔案
                 book_url = book_options[selected_book_name]
                 response = requests.get(book_url)
 
