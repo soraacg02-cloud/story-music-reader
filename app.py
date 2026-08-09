@@ -305,14 +305,10 @@ if has_cloud:
 
                 st.sidebar.subheader(f"📖 《{book_name}》")
 
-                # 關鍵修改：音樂播放區移至上方，開關移至下方
+                # 需求調整 1：將「🎵 懸浮音樂控制箱」收納在側邊欄懸浮控制面板中
                 st.sidebar.subheader("🎵 懸浮音樂控制箱")
                 render_music_player(
                     current_ch["music_url"], st.session_state.auto_play
-                )
-
-                st.session_state.auto_play = st.sidebar.toggle(
-                    "▶️ 切換章節自動播放", value=st.session_state.auto_play
                 )
 
                 st.sidebar.divider()
@@ -355,6 +351,13 @@ if has_cloud:
 
                 # ---------------- 文章閱讀主區域 ----------------
                 st.header(f"《{book_name}》")
+
+                # 需求調整 2：將「▶️ 切換章節自動播放」移至主閱讀區最上方
+                with st.container(border=True):
+                    st.session_state.auto_play = st.toggle(
+                        "▶️ 切換章節自動播放音樂", value=st.session_state.auto_play
+                    )
+
                 st.subheader(current_ch["title"])
                 st.divider()
 
