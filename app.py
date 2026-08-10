@@ -528,19 +528,10 @@ if has_cloud:
                 content_lines = current_ch["content"]
                 total_lines = len(content_lines)
 
-                # ---------------- 側邊欄區域 (調整順序與字體大小) ----------------
+                # ---------------- 側邊欄區域 (順序對調與字體縮小) ----------------
                 st.sidebar.divider()
 
-                # 1. 頂部顯示書籍封面 (優先級最高)
-                st.sidebar.header(f"🖼️ {book_name}")
-                reading_cover_url = cover_map.get(book_name)
-                if reading_cover_url:
-                    st.sidebar.image(reading_cover_url, use_container_width=True)
-                else:
-                    st.sidebar.caption("📷 本書尚無封面圖片")
-
-                # 2. 順序對調：將本章插圖放置於封面下方、下載按鈕上方，並使用 caption 降低字體與視覺權重
-                st.sidebar.divider()
+                # 1. 第一步：先顯示「本章插圖」（移至最上方，並改用小標題 caption 降低視覺搶戲）
                 st.sidebar.caption(f"📖 本章插圖：{current_ch['title']}")
                 ch_key = f"{book_name}_{current_ch['title']}"
                 ch_cover_url = chapter_cover_map.get(ch_key)
@@ -566,6 +557,15 @@ if has_cloud:
                                 st.rerun()
                         else:
                             st.warning("請先選擇圖片檔案")
+
+                # 2. 第二步：接著顯示「整本書的封面圖片」（移至插圖下方，並將書名字體改小為 caption）
+                st.sidebar.divider()
+                st.sidebar.caption(f"📘 書籍封面：{book_name}")
+                reading_cover_url = cover_map.get(book_name)
+                if reading_cover_url:
+                    st.sidebar.image(reading_cover_url, use_container_width=True)
+                else:
+                    st.sidebar.caption("📷 本書尚無封面圖片")
 
                 # 3. 下載本書 Word 檔按鈕
                 st.sidebar.divider()
