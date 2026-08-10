@@ -121,7 +121,7 @@ def format_file_size(size_in_bytes):
         return f"{size_in_bytes / (1024 * 1024):.2f} MB"
 
 
-# 5. 安全狀態同步回呼函式 (換章時強制將百分比歸零並回到頂端)
+# 5. 安全狀態同步回呼函式
 def prev_chapter_cb():
     if st.session_state.ch_index > 0:
         st.session_state.ch_index -= 1
@@ -182,7 +182,7 @@ def parse_docx_bytes(file_bytes):
     return chapters
 
 
-# 7. 音樂播放器輔助函式（支援 YouTube 指定秒數與自動播放）
+# 7. 音樂播放器輔助函式
 def render_music_player(music_url, is_autoplay):
     if music_url:
         if "youtube.com" in music_url or "youtu.be" in music_url:
@@ -200,7 +200,7 @@ def render_music_player(music_url, is_autoplay):
                 
                 if params:
                     embed_url += "?" + "&".join(params)
-                    
+                
                 st.sidebar.markdown(
                     f'<iframe width="100%" height="200" src="{embed_url}" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowfullscreen></iframe>',
                     unsafe_allow_html=True
@@ -245,7 +245,7 @@ if has_cloud:
             b_title = unquote(r["public_id"].replace("story_books/", ""))
             book_options_map[b_title] = r["public_id"]
 
-        # 3. 抓取所有已上傳的圖片 (image)，建立精準的【書名 ➡️ 圖片真實網址】對照字典
+        # 3. 抓取所有已上傳的圖片 (image)
         cover_map = {}
         try:
             cover_resources = cloudinary.api.resources(
@@ -261,40 +261,85 @@ if has_cloud:
         # ---------------- 模式 A：總書櫃頁面 ----------------
         if not st.session_state.selected_book_id:
             st.sidebar.divider()
-            st.sidebar.header("📤 新增故事入庫")
-            new_file = st.sidebar.file_uploader(
-                "上傳 Word 故事檔 (.docx)", type=["docx"]
-            )
-            cover_file = st.sidebar.file_uploader(
-                "上傳書籍封面圖片 (選填)", type=["png", "jpg", "jpeg"]
+            st.sidebar.header("📤 故事入庫與覆蓋管理")
+            
+            upload_mode = st.sidebar.radio(
+                "選擇操作模式：",
+                ["✨ 全新上傳新書", "🔄 覆蓋現有書籍"],
+                key="upload_mode_radio"
             )
 
-            if new_file:
-                if st.sidebar.button(
-                    "💾 確認存入雲端書櫃", use_container_width=True
-                ):
-                    with st.spinner("正在上傳故事與封面..."):
-                        try:
-                            safe_filename = quote(new_file.name)
-                            cloudinary.uploader.upload(
-                                new_file,
-                                resource_type="raw",
-                                public_id=f"story_books/{safe_filename}",
-                                overwrite=True,
-                            )
-                            if cover_file:
+            new_file = st.sidebar.file_uploader(
+                "選擇 Word 故事檔 (.docx)", type=["docx"], key="main_file_uploader"
+            )
+            cover_file = st.sidebar.file_uploader(
+                "選擇書籍封面圖片 (選填)", type=["png", "jpg", "jpeg"], key="main_cover_uploader"
+            )
+
+            if upload_mode == "✨ 全新上傳新書":
+                if new_file:
+                    if st.sidebar.button("💾 確認存入雲端書櫃", use_container_width=True):
+                        with st.spinner("正在上傳故事與封面..."):
+                            try:
+                                safe_filename = quote(new_file.name)
                                 cloudinary.uploader.upload(
-                                    cover_file,
-                                    resource_type="image",
-                                    public_id=f"story_covers/{safe_filename}",
+                                    new_file,
+                                    resource_type="raw",
+                                    public_id=f"story_books/{safe_filename}",
                                     overwrite=True,
                                 )
-                            st.sidebar.success(
-                                f"《{new_file.name}》與封面已成功收錄！"
-                            )
-                            st.rerun()
-                        except Exception as e:
-                            st.sidebar.error(f"上傳失敗：{e}")
+                                if cover_file:
+                                    cloudinary.uploader.upload(
+                                        cover_file,
+                                        resource_type="image",
+                                        public_id=f"story_covers/{safe_filename}",
+                                        overwrite=True,
+                                    )
+                                st.sidebar.success(
+                                    f"《{new_file.name}》與封面已成功收錄！"
+                                )
+                                st.rerun()
+                            except Exception as e:
+                                st.sidebar.error(f"上傳失敗：{e}")
+            else: # 覆蓋現有書籍模式
+                all_book_names = list(book_options_map.keys())
+                if all_book_names:
+                    target_to_overwrite = st.sidebar.selectbox(
+                        "選擇要被覆蓋的書籍：", all_book_names, key="target_book_select"
+                    )
+                    confirm_overwrite = st.sidebar.checkbox(
+                        "⚠️ 我確定要刪除原檔案並以新檔案覆蓋", key="confirm_overwrite_box"
+                    )
+                    
+                    if new_file and confirm_overwrite:
+                        if st.sidebar.button("💾 確認執行覆蓋", use_container_width=True):
+                            with st.spinner("正在覆蓋雲端檔案..."):
+                                try:
+                                    safe_filename = quote(target_to_overwrite)
+                                    # 上傳新檔案覆蓋原檔案
+                                    cloudinary.uploader.upload(
+                                        new_file,
+                                        resource_type="raw",
+                                        public_id=f"story_books/{safe_filename}",
+                                        overwrite=True,
+                                    )
+                                    if cover_file:
+                                        cloudinary.uploader.upload(
+                                            cover_file,
+                                            resource_type="image",
+                                            public_id=f"story_covers/{safe_filename}",
+                                            overwrite=True,
+                                        )
+                                    st.sidebar.success(
+                                        f"《{target_to_overwrite}》已成功覆蓋更新！"
+                                    )
+                                    st.rerun()
+                                except Exception as e:
+                                    st.sidebar.error(f"覆蓋失敗：{e}")
+                    elif new_file and not confirm_overwrite:
+                        st.sidebar.warning("請先勾選上方「確認覆蓋」選項才能進行替換。")
+                else:
+                    st.sidebar.info("目前書櫃中尚無任何書籍可供覆蓋。")
 
             if resources:
                 st.header("📖 您的故事書櫃")
@@ -445,6 +490,18 @@ if has_cloud:
                 else:
                     st.sidebar.caption("📷 本書尚無封面圖片")
 
+                # 【新增功能 2】：下載本書 Word 檔按鈕
+                st.sidebar.divider()
+                st.sidebar.header("📥 檔案下載")
+                st.sidebar.download_button(
+                    label="📥 下載本書 Word 檔",
+                    data=response.content,
+                    file_name=book_name,
+                    mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                    use_container_width=True,
+                    key="sidebar_download_docx"
+                )
+
                 st.sidebar.divider()
 
                 st.sidebar.header("🎵 音樂盒")
@@ -506,7 +563,7 @@ if has_cloud:
 
                 st.sidebar.divider()
 
-                # 控制面板（包含快速切換書籍與返回總書櫃）
+                # 控制面板
                 st.sidebar.header("🎛️ 控制面板")
 
                 all_book_names = list(book_options_map.keys())
