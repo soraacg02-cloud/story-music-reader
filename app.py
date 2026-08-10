@@ -528,10 +528,10 @@ if has_cloud:
                 content_lines = current_ch["content"]
                 total_lines = len(content_lines)
 
-                # ---------------- 側邊欄區域 (順序對調與字體縮小) ----------------
+                # ---------------- 側邊欄區域 (正確對調位置並縮小所有文字) ----------------
                 st.sidebar.divider()
 
-                # 1. 第一步：先顯示「本章插圖」（移至最上方，並改用小標題 caption 降低視覺搶戲）
+                # 1. 第一步：精準將「本章插圖」置於最上方，並使用 caption 縮小文字
                 st.sidebar.caption(f"📖 本章插圖：{current_ch['title']}")
                 ch_key = f"{book_name}_{current_ch['title']}"
                 ch_cover_url = chapter_cover_map.get(ch_key)
@@ -558,7 +558,7 @@ if has_cloud:
                         else:
                             st.warning("請先選擇圖片檔案")
 
-                # 2. 第二步：接著顯示「整本書的封面圖片」（移至插圖下方，並將書名字體改小為 caption）
+                # 2. 第二步：將「書籍封面」置於插圖下方，並將書名文字改小為 caption
                 st.sidebar.divider()
                 st.sidebar.caption(f"📘 書籍封面：{book_name}")
                 reading_cover_url = cover_map.get(book_name)
@@ -674,7 +674,7 @@ if has_cloud:
                     st.session_state.reading_pct = 0
                     st.rerun()
 
-                # ---------------- 文章閱讀主區域 ----------------
+                # ---------------- 文章閱讀主區域 (確保每章一開始都在最頂) ----------------
                 if pct_value == 0:
                     st.components.v1.html(
                         """
