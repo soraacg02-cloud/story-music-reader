@@ -39,7 +39,7 @@ st.session_state.theme_mode = st.sidebar.radio(
     key="theme_radio",
 )
 
-# 3. 高對比度與主題顏色 CSS 設定 (支援動態深淺色主題)
+# 3. 高對比度與主題顏色 CSS 設定
 if st.session_state.theme_mode == "🌙 黑底模式":
     bg_col, sidebar_bg, card_bg, border_col, text_col, button_bg = (
         "#0e1117",
@@ -188,7 +188,7 @@ def render_music_player(music_url, is_autoplay):
         if "youtube.com" in music_url or "youtu.be" in music_url:
             vid_match = re.search(r"(?:v=|be/|embed/)([\w-]+)", music_url)
             time_match = re.search(r"[?&](?:t|start)=(\d+)s?", music_url)
-            
+
             if vid_match:
                 vid = vid_match.group(1)
                 embed_url = f"https://www.youtube.com/embed/{vid}"
@@ -197,10 +197,10 @@ def render_music_player(music_url, is_autoplay):
                     params.append(f"start={time_match.group(1)}")
                 if is_autoplay:
                     params.append("autoplay=1")
-                
+
                 if params:
                     embed_url += "?" + "&".join(params)
-                
+
                 st.sidebar.markdown(
                     f'<iframe width="100%" height="200" src="{embed_url}" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowfullscreen></iframe>',
                     unsafe_allow_html=True
@@ -274,7 +274,7 @@ if has_cloud:
         if not st.session_state.selected_book_id:
             st.sidebar.divider()
             st.sidebar.header("📤 故事入庫與覆蓋管理")
-            
+
             upload_mode = st.sidebar.radio(
                 "選擇操作模式：",
                 ["✨ 全新上傳新書", "🔄 覆蓋現有書籍"],
@@ -322,7 +322,7 @@ if has_cloud:
                     confirm_overwrite = st.sidebar.checkbox(
                         "⚠️ 我確定要刪除原檔案並以新檔案覆蓋（更新上傳日期）", key="confirm_overwrite_box"
                     )
-                    
+
                     if new_file and confirm_overwrite:
                         if st.sidebar.button("💾 確認執行覆蓋", use_container_width=True):
                             with st.spinner("正在覆蓋雲端檔案與更新時間..."):
@@ -332,7 +332,7 @@ if has_cloud:
                                         cloudinary.uploader.destroy(f"story_books/{safe_filename}", resource_type="raw", invalidate=True)
                                     except Exception:
                                         pass
-                                    
+
                                     cloudinary.uploader.upload(
                                         new_file,
                                         resource_type="raw",
@@ -370,7 +370,7 @@ if has_cloud:
                     lib_chapters = parse_docx_bytes(lib_resp.content)
                     lib_ch_titles = [c["title"] for c in lib_chapters]
                     selected_lib_ch = st.sidebar.selectbox("選擇要配圖的章節：", lib_ch_titles, key="lib_ch_select")
-                    
+
                     lib_ch_file = st.file_uploader("選擇章節插圖", type=["png", "jpg", "jpeg"], key="lib_ch_file_up")
                     if st.sidebar.button("💾 上傳該章節插圖", use_container_width=True, key="lib_ch_btn"):
                         if lib_ch_file:
@@ -528,9 +528,10 @@ if has_cloud:
                 content_lines = current_ch["content"]
                 total_lines = len(content_lines)
 
-                # ---------------- 側邊欄區域 ----------------
+                # ---------------- 側邊欄區域 (調整順序與字體大小) ----------------
                 st.sidebar.divider()
 
+                # 1. 頂部顯示書籍封面 (優先級最高)
                 st.sidebar.header(f"🖼️ {book_name}")
                 reading_cover_url = cover_map.get(book_name)
                 if reading_cover_url:
@@ -538,9 +539,9 @@ if has_cloud:
                 else:
                     st.sidebar.caption("📷 本書尚無封面圖片")
 
-                # 【置於封面圖下方、下載按鈕上方】顯示與上傳對應章節插圖
+                # 2. 順序對調：將本章插圖放置於封面下方、下載按鈕上方，並使用 caption 降低字體與視覺權重
                 st.sidebar.divider()
-                st.sidebar.header(f"🖼️ 本章插圖：{current_ch['title']}")
+                st.sidebar.caption(f"📖 本章插圖：{current_ch['title']}")
                 ch_key = f"{book_name}_{current_ch['title']}"
                 ch_cover_url = chapter_cover_map.get(ch_key)
                 if ch_cover_url:
@@ -566,7 +567,7 @@ if has_cloud:
                         else:
                             st.warning("請先選擇圖片檔案")
 
-                # 下載本書 Word 檔按鈕
+                # 3. 下載本書 Word 檔按鈕
                 st.sidebar.divider()
                 st.sidebar.header("📥 檔案下載")
                 st.sidebar.download_button(
