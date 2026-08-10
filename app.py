@@ -245,7 +245,7 @@ if has_cloud:
             b_title = unquote(r["public_id"].replace("story_books/", ""))
             book_options_map[b_title] = r["public_id"]
 
-        # 3. 抓取所有已上傳的圖片 (image)
+        # 3. 抓取所有已上傳的封面圖片 (image)
         cover_map = {}
         try:
             cover_resources = cloudinary.api.resources(
@@ -257,6 +257,18 @@ if has_cloud:
                 cover_map[title_key] = img_res["secure_url"]
         except Exception:
             cover_map = {}
+
+        # 4. 抓取所有已上傳的章節插圖 (image)
+        chapter_cover_map = {}
+        try:
+            cc_resources = cloudinary.api.resources(
+                type="upload", prefix="story_chapter_covers/", resource_type="image"
+            )["resources"]
+            for img_res in cc_resources:
+                clean_id = img_res["public_id"].replace("story_chapter_covers/", "")
+                chapter_cover_map[unquote(clean_id)] = img_res["secure_url"]
+        except Exception:
+            chapter_cover_map = {}
 
         # ---------------- 模式 A：總書櫃頁面 ----------------
         if not st.session_state.selected_book_id:
@@ -316,13 +328,11 @@ if has_cloud:
                             with st.spinner("正在覆蓋雲端檔案與更新時間..."):
                                 try:
                                     safe_filename = quote(target_to_overwrite)
-                                    # 為了確保雲端重新整理時間戳記，先執行 destroy 舊檔再重新上傳，或利用 invalidate
                                     try:
                                         cloudinary.uploader.destroy(f"story_books/{safe_filename}", resource_type="raw", invalidate=True)
                                     except Exception:
                                         pass
                                     
-                                    # 重新上傳新檔案，Cloudinary 會以當下的時間作為新的建立時間 (created_at)
                                     cloudinary.uploader.upload(
                                         new_file,
                                         resource_type="raw",
@@ -347,6 +357,37 @@ if has_cloud:
                         st.sidebar.warning("請先勾選上方「確認覆蓋」選項才能進行替換。")
                 else:
                     st.sidebar.info("目前書櫃中尚無任何書籍可供覆蓋。")
+
+            # 總書櫃的各章節插圖上傳管理區塊
+            st.sidebar.divider()
+            st.sidebar.header("🖼️ 各章節插圖管理")
+            all_book_names_list = list(book_options_map.keys())
+            if all_book_names_list:
+                selected_lib_book = st.sidebar.selectbox("選擇要配圖的書籍：", all_book_names_list, key="lib_ch_book_select")
+                try:
+                    lib_book_res = next(r for r in resources if unquote(r["public_id"].replace("story_books/", "")) == selected_lib_book)
+                    lib_resp = requests.get(lib_book_res["secure_url"])
+                    lib_chapters = parse_docx_bytes(lib_resp.content)
+                    lib_ch_titles = [c["title"] for c in lib_chapters]
+                    selected_lib_ch = st.sidebar.selectbox("選擇要配圖的章節：", lib_ch_titles, key="lib_ch_select")
+                    
+                    lib_ch_file = st.file_uploader("選擇章節插圖", type=["png", "jpg", "jpeg"], key="lib_ch_file_up")
+                    if st.sidebar.button("💾 上傳該章節插圖", use_container_width=True, key="lib_ch_btn"):
+                        if lib_ch_file:
+                            with st.spinner("上傳中..."):
+                                target_ch_key = f"{selected_lib_book}_{selected_lib_ch}"
+                                cloudinary.uploader.upload(
+                                    lib_ch_file,
+                                    resource_type="image",
+                                    public_id=f"story_chapter_covers/{quote(target_ch_key)}",
+                                    overwrite=True,
+                                )
+                                st.sidebar.success(f"《{selected_lib_book} - {selected_lib_ch}》插圖上傳成功！")
+                                st.rerun()
+                        else:
+                            st.sidebar.warning("請先選擇圖片檔案")
+                except Exception:
+                    st.sidebar.caption("載入章節失敗")
 
             if resources:
                 st.header("📖 您的故事書櫃")
@@ -496,6 +537,34 @@ if has_cloud:
                     st.sidebar.image(reading_cover_url, use_container_width=True)
                 else:
                     st.sidebar.caption("📷 本書尚無封面圖片")
+
+                # 【置於封面圖下方、下載按鈕上方】顯示與上傳對應章節插圖
+                st.sidebar.divider()
+                st.sidebar.header(f"🖼️ 本章插圖：{current_ch['title']}")
+                ch_key = f"{book_name}_{current_ch['title']}"
+                ch_cover_url = chapter_cover_map.get(ch_key)
+                if ch_cover_url:
+                    st.sidebar.image(ch_cover_url, use_container_width=True)
+                else:
+                    st.sidebar.caption("📷 本章尚無插圖")
+
+                with st.sidebar.popover("🖼️ 上傳/更換本章插圖", use_container_width=True):
+                    ch_img_file = st.file_uploader(
+                        "選擇本章插圖", type=["png", "jpg", "jpeg"], key=f"ch_up_{ch_key}"
+                    )
+                    if st.button("💾 確認上傳本章插圖", key=f"btn_ch_up_{ch_key}", use_container_width=True):
+                        if ch_img_file:
+                            with st.spinner("正在上傳本章插圖..."):
+                                cloudinary.uploader.upload(
+                                    ch_img_file,
+                                    resource_type="image",
+                                    public_id=f"story_chapter_covers/{quote(ch_key)}",
+                                    overwrite=True,
+                                )
+                                st.toast("本章插圖已更新！")
+                                st.rerun()
+                        else:
+                            st.warning("請先選擇圖片檔案")
 
                 # 下載本書 Word 檔按鈕
                 st.sidebar.divider()
