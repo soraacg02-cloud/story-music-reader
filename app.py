@@ -308,20 +308,27 @@ if has_cloud:
                         "選擇要被覆蓋的書籍：", all_book_names, key="target_book_select"
                     )
                     confirm_overwrite = st.sidebar.checkbox(
-                        "⚠️ 我確定要刪除原檔案並以新檔案覆蓋", key="confirm_overwrite_box"
+                        "⚠️ 我確定要刪除原檔案並以新檔案覆蓋（更新上傳日期）", key="confirm_overwrite_box"
                     )
                     
                     if new_file and confirm_overwrite:
                         if st.sidebar.button("💾 確認執行覆蓋", use_container_width=True):
-                            with st.spinner("正在覆蓋雲端檔案..."):
+                            with st.spinner("正在覆蓋雲端檔案與更新時間..."):
                                 try:
                                     safe_filename = quote(target_to_overwrite)
-                                    # 上傳新檔案覆蓋原檔案
+                                    # 為了確保雲端重新整理時間戳記，先執行 destroy 舊檔再重新上傳，或利用 invalidate
+                                    try:
+                                        cloudinary.uploader.destroy(f"story_books/{safe_filename}", resource_type="raw", invalidate=True)
+                                    except Exception:
+                                        pass
+                                    
+                                    # 重新上傳新檔案，Cloudinary 會以當下的時間作為新的建立時間 (created_at)
                                     cloudinary.uploader.upload(
                                         new_file,
                                         resource_type="raw",
                                         public_id=f"story_books/{safe_filename}",
                                         overwrite=True,
+                                        invalidate=True
                                     )
                                     if cover_file:
                                         cloudinary.uploader.upload(
@@ -331,7 +338,7 @@ if has_cloud:
                                             overwrite=True,
                                         )
                                     st.sidebar.success(
-                                        f"《{target_to_overwrite}》已成功覆蓋更新！"
+                                        f"《{target_to_overwrite}》已成功覆蓋並更新上傳日期！"
                                     )
                                     st.rerun()
                                 except Exception as e:
@@ -490,7 +497,7 @@ if has_cloud:
                 else:
                     st.sidebar.caption("📷 本書尚無封面圖片")
 
-                # 【新增功能 2】：下載本書 Word 檔按鈕
+                # 下載本書 Word 檔按鈕
                 st.sidebar.divider()
                 st.sidebar.header("📥 檔案下載")
                 st.sidebar.download_button(
