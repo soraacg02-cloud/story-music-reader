@@ -23,6 +23,8 @@ if "theme_mode" not in st.session_state:
     st.session_state.theme_mode = "🌙 黑底模式"
 if "auto_play" not in st.session_state:
     st.session_state.auto_play = True
+if "loop_play" not in st.session_state:
+    st.session_state.loop_play = True
 if "max_chapters" not in st.session_state:
     st.session_state.max_chapters = 1
 if "chapter_titles" not in st.session_state:
@@ -182,8 +184,8 @@ def parse_docx_bytes(file_bytes):
     return chapters
 
 
-# 7. 音樂播放器輔助函式
-def render_music_player(music_url, is_autoplay):
+# 7. 音樂播放器輔助函式（支援自動播放與循環播放）
+def render_music_player(music_url, is_autoplay, is_loop):
     if music_url:
         if "youtube.com" in music_url or "youtu.be" in music_url:
             vid_match = re.search(r"(?:v=|be/|embed/)([\w-]+)", music_url)
@@ -197,6 +199,8 @@ def render_music_player(music_url, is_autoplay):
                     params.append(f"start={time_match.group(1)}")
                 if is_autoplay:
                     params.append("autoplay=1")
+                if is_loop:
+                    params.append(f"loop=1&playlist={vid}")
 
                 if params:
                     embed_url += "?" + "&".join(params)
@@ -206,9 +210,9 @@ def render_music_player(music_url, is_autoplay):
                     unsafe_allow_html=True
                 )
             else:
-                st.sidebar.video(music_url, autoplay=is_autoplay)
+                st.sidebar.video(music_url, autoplay=is_autoplay, loop=is_loop)
         else:
-            st.sidebar.audio(music_url, autoplay=is_autoplay)
+            st.sidebar.audio(music_url, autoplay=is_autoplay, loop=is_loop)
     else:
         st.sidebar.caption("🎵 本章節未設定背景音樂")
 
@@ -528,10 +532,10 @@ if has_cloud:
                 content_lines = current_ch["content"]
                 total_lines = len(content_lines)
 
-                # ---------------- 側邊欄區域 (正確對調位置並縮小所有文字) ----------------
+                # ---------------- 側邊欄區域 ----------------
                 st.sidebar.divider()
 
-                # 1. 第一步：精準將「本章插圖」置於最上方，並使用 caption 縮小文字
+                # 1. 本章插圖（置於最上方）
                 st.sidebar.caption(f"📖 本章插圖：{current_ch['title']}")
                 ch_key = f"{book_name}_{current_ch['title']}"
                 ch_cover_url = chapter_cover_map.get(ch_key)
@@ -558,7 +562,7 @@ if has_cloud:
                         else:
                             st.warning("請先選擇圖片檔案")
 
-                # 2. 第二步：將「書籍封面」置於插圖下方，並將書名文字改小為 caption
+                # 2. 書籍封面（置於插圖下方）
                 st.sidebar.divider()
                 st.sidebar.caption(f"📘 書籍封面：{book_name}")
                 reading_cover_url = cover_map.get(book_name)
@@ -579,11 +583,24 @@ if has_cloud:
                     key="sidebar_download_docx"
                 )
 
+                # 4. 音樂盒與循環播放控制
                 st.sidebar.divider()
-
                 st.sidebar.header("🎵 音樂盒")
+
+                with st.container(border=True):
+                    st.session_state.auto_play = st.toggle(
+                        "▶️ 切換章節自動播放音樂",
+                        value=st.session_state.auto_play,
+                        key="auto_play_toggle"
+                    )
+                    st.session_state.loop_play = st.toggle(
+                        "🔁 音樂循環播放",
+                        value=st.session_state.loop_play,
+                        key="loop_play_toggle"
+                    )
+
                 render_music_player(
-                    current_ch["music_url"], st.session_state.auto_play
+                    current_ch["music_url"], st.session_state.auto_play, st.session_state.loop_play
                 )
 
                 st.sidebar.divider()
@@ -674,7 +691,7 @@ if has_cloud:
                     st.session_state.reading_pct = 0
                     st.rerun()
 
-                # ---------------- 文章閱讀主區域 (確保每章一開始都在最頂) ----------------
+                # ---------------- 文章閱讀主區域 ----------------
                 if pct_value == 0:
                     st.components.v1.html(
                         """
@@ -686,12 +703,6 @@ if has_cloud:
                     )
 
                 st.header(f"《{book_name}》")
-
-                with st.container(border=True):
-                    st.session_state.auto_play = st.toggle(
-                        "▶️ 切換章節自動播放音樂",
-                        value=st.session_state.auto_play,
-                    )
 
                 st.subheader(current_ch["title"])
                 st.divider()
