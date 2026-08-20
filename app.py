@@ -14,7 +14,7 @@ st.set_page_config(
     page_title="雲端沉浸式故事音樂書櫃", page_icon="📚", layout="wide"
 )
 
-# 2. Session State 記憶狀態初始化 (全域共享黑板)
+# 2. Session State 記憶狀態初始化
 if "selected_book_id" not in st.session_state:
     st.session_state.selected_book_id = None
 if "ch_index" not in st.session_state:
@@ -86,9 +86,9 @@ css_style = f"""
         background-color: {button_bg} !important; 
         color: {text_col} !important; 
         border: 1px solid {border_col} !important; 
-        font-weight: bold !important;
-        min-height: 48px !important;
-        border-radius: 8px !important;
+        font-weight: bold !important; 
+        min-height: 48px !important; 
+        border-radius: 8px !important; 
     }}
 
     p, h1, h2, h3, h4, span, label {{ color: {text_col} !important; }}
@@ -148,7 +148,43 @@ def on_slider_change_cb():
     st.session_state.reading_pct = st.session_state.get("sb_slider_pct", 0)
 
 
-# 6. Word 文件解析器
+# 6. 快取網路請求與 Word 文件解析
+@st.cache_data(ttl=60)
+def fetch_cloudinary_catalog():
+    raw_res = cloudinary.api.resources(
+        type="upload", prefix="story_books/", resource_type="raw", max_results=500
+    ).get("resources", [])
+
+    cover_map = {}
+    try:
+        img_res = cloudinary.api.resources(
+            type="upload", prefix="story_covers/", resource_type="image", max_results=500
+        ).get("resources", [])
+        for r in img_res:
+            cover_map[unquote(r["public_id"].replace("story_covers/", ""))] = r["secure_url"]
+    except Exception:
+        pass
+
+    ch_cover_map = {}
+    try:
+        cc_res = cloudinary.api.resources(
+            type="upload", prefix="story_chapter_covers/", resource_type="image", max_results=500
+        ).get("resources", [])
+        for r in cc_res:
+            ch_cover_map[unquote(r["public_id"].replace("story_chapter_covers/", ""))] = r["secure_url"]
+    except Exception:
+        pass
+
+    return raw_res, cover_map, ch_cover_map
+
+
+@st.cache_data(ttl=300)
+def fetch_docx_bytes(url):
+    resp = requests.get(url, timeout=10)
+    resp.raise_for_status()
+    return resp.content
+
+
 def parse_docx_bytes(file_bytes):
     doc = docx.Document(io.BytesIO(file_bytes))
     chapters = []
@@ -169,9 +205,7 @@ def parse_docx_bytes(file_bytes):
                 "music_url": "",
                 "content": [],
             }
-        elif text.strip().startswith("http://") or text.strip().startswith(
-            "https://"
-        ):
+        elif text.strip().startswith("http://") or text.strip().startswith("https://"):
             current_chapter["music_url"] = text.strip()
         else:
             if not current_chapter["title"]:
@@ -184,7 +218,7 @@ def parse_docx_bytes(file_bytes):
     return chapters
 
 
-# 7. 音樂播放器輔助函式（支援自動播放與循環播放）
+# 7. 音樂播放器輔助函式
 def render_music_player(music_url, is_autoplay, is_loop):
     if music_url:
         if "youtube.com" in music_url or "youtu.be" in music_url:
@@ -238,41 +272,13 @@ st.title("📚 雲端沉浸式故事音樂書櫃")
 # 8. 主邏輯區域
 if has_cloud:
     try:
-        # 1. 抓取文字檔 (raw)
-        resources = cloudinary.api.resources(
-            type="upload", prefix="story_books/", resource_type="raw"
-        )["resources"]
+        resources, cover_map, chapter_cover_map = fetch_cloudinary_catalog()
 
-        # 2. 建立書籍對照字典 {書名: public_id}
+        # 建立書籍對照字典 {書名: public_id}
         book_options_map = {}
         for r in resources:
             b_title = unquote(r["public_id"].replace("story_books/", ""))
             book_options_map[b_title] = r["public_id"]
-
-        # 3. 抓取所有已上傳的封面圖片 (image)
-        cover_map = {}
-        try:
-            cover_resources = cloudinary.api.resources(
-                type="upload", prefix="story_covers/", resource_type="image"
-            )["resources"]
-            for img_res in cover_resources:
-                clean_id = img_res["public_id"].replace("story_covers/", "")
-                title_key = unquote(clean_id)
-                cover_map[title_key] = img_res["secure_url"]
-        except Exception:
-            cover_map = {}
-
-        # 4. 抓取所有已上傳的章節插圖 (image)
-        chapter_cover_map = {}
-        try:
-            cc_resources = cloudinary.api.resources(
-                type="upload", prefix="story_chapter_covers/", resource_type="image"
-            )["resources"]
-            for img_res in cc_resources:
-                clean_id = img_res["public_id"].replace("story_chapter_covers/", "")
-                chapter_cover_map[unquote(clean_id)] = img_res["secure_url"]
-        except Exception:
-            chapter_cover_map = {}
 
         # ---------------- 模式 A：總書櫃頁面 ----------------
         if not st.session_state.selected_book_id:
@@ -311,13 +317,12 @@ if has_cloud:
                                         public_id=f"story_covers/{safe_filename}",
                                         overwrite=True,
                                     )
-                                st.sidebar.success(
-                                    f"《{new_file.name}》與封面已成功收錄！"
-                                )
+                                st.sidebar.success(f"《{new_file.name}》與封面已成功收錄！")
+                                st.cache_data.clear()
                                 st.rerun()
                             except Exception as e:
                                 st.sidebar.error(f"上傳失敗：{e}")
-            else: # 覆蓋現有書籍模式
+            else:
                 all_book_names = list(book_options_map.keys())
                 if all_book_names:
                     target_to_overwrite = st.sidebar.selectbox(
@@ -351,9 +356,8 @@ if has_cloud:
                                             public_id=f"story_covers/{safe_filename}",
                                             overwrite=True,
                                         )
-                                    st.sidebar.success(
-                                        f"《{target_to_overwrite}》已成功覆蓋並更新上傳日期！"
-                                    )
+                                    st.sidebar.success(f"《{target_to_overwrite}》已成功覆蓋並更新上傳日期！")
+                                    st.cache_data.clear()
                                     st.rerun()
                                 except Exception as e:
                                     st.sidebar.error(f"覆蓋失敗：{e}")
@@ -362,7 +366,7 @@ if has_cloud:
                 else:
                     st.sidebar.info("目前書櫃中尚無任何書籍可供覆蓋。")
 
-            # 總書櫃的各章節插圖上傳管理區塊
+            # 總書櫃各章節插圖管理
             st.sidebar.divider()
             st.sidebar.header("🖼️ 各章節插圖管理")
             all_book_names_list = list(book_options_map.keys())
@@ -370,12 +374,12 @@ if has_cloud:
                 selected_lib_book = st.sidebar.selectbox("選擇要配圖的書籍：", all_book_names_list, key="lib_ch_book_select")
                 try:
                     lib_book_res = next(r for r in resources if unquote(r["public_id"].replace("story_books/", "")) == selected_lib_book)
-                    lib_resp = requests.get(lib_book_res["secure_url"])
-                    lib_chapters = parse_docx_bytes(lib_resp.content)
+                    lib_bytes = fetch_docx_bytes(lib_book_res["secure_url"])
+                    lib_chapters = parse_docx_bytes(lib_bytes)
                     lib_ch_titles = [c["title"] for c in lib_chapters]
                     selected_lib_ch = st.sidebar.selectbox("選擇要配圖的章節：", lib_ch_titles, key="lib_ch_select")
 
-                    lib_ch_file = st.file_uploader("選擇章節插圖", type=["png", "jpg", "jpeg"], key="lib_ch_file_up")
+                    lib_ch_file = st.sidebar.file_uploader("選擇章節插圖", type=["png", "jpg", "jpeg"], key="lib_ch_file_up")
                     if st.sidebar.button("💾 上傳該章節插圖", use_container_width=True, key="lib_ch_btn"):
                         if lib_ch_file:
                             with st.spinner("上傳中..."):
@@ -387,6 +391,7 @@ if has_cloud:
                                     overwrite=True,
                                 )
                                 st.sidebar.success(f"《{selected_lib_book} - {selected_lib_ch}》插圖上傳成功！")
+                                st.cache_data.clear()
                                 st.rerun()
                         else:
                             st.sidebar.warning("請先選擇圖片檔案")
@@ -422,32 +427,18 @@ if has_cloud:
                                 st.caption("📷 尚無封面圖片")
 
                             st.subheader(f"📘 {book_title}")
-                            st.caption(
-                                f"📅 上傳：{date_display} ｜ 📦 大小：{size_display}"
-                            )
+                            st.caption(f"📅 上傳：{date_display} ｜ 📦 大小：{size_display}")
 
                             b1, b2 = st.columns([2, 1])
                             with b1:
-                                if st.button(
-                                    "📖 點擊閱讀",
-                                    key=f"read_{public_id}",
-                                    use_container_width=True,
-                                ):
-                                    st.session_state.selected_book_id = (
-                                        public_id
-                                    )
+                                if st.button("📖 點擊閱讀", key=f"read_{public_id}", use_container_width=True):
+                                    st.session_state.selected_book_id = public_id
                                     st.session_state.ch_index = 0
                                     st.session_state.reading_pct = 0
                                     st.rerun()
                             with b2:
-                                if st.button(
-                                    "🗑️ 刪除",
-                                    key=f"del_{public_id}",
-                                    use_container_width=True,
-                                ):
-                                    cloudinary.uploader.destroy(
-                                        public_id, resource_type="raw"
-                                    )
+                                if st.button("🗑️ 刪除", key=f"del_{public_id}", use_container_width=True):
+                                    cloudinary.uploader.destroy(public_id, resource_type="raw")
                                     try:
                                         cloudinary.uploader.destroy(
                                             f"story_covers/{quote(book_title)}",
@@ -456,11 +447,10 @@ if has_cloud:
                                     except Exception:
                                         pass
                                     st.toast(f"已刪除《{book_title}》")
+                                    st.cache_data.clear()
                                     st.rerun()
 
-                            with st.popover(
-                                "🖼️ 編輯/補傳封面", use_container_width=True
-                            ):
+                            with st.popover("🖼️ 編輯/補傳封面", use_container_width=True):
                                 edit_cover_file = st.file_uploader(
                                     "選擇封面圖片",
                                     type=["png", "jpg", "jpeg"],
@@ -468,11 +458,7 @@ if has_cloud:
                                 )
                                 c_col1, c_col2 = st.columns(2)
                                 with c_col1:
-                                    if st.button(
-                                        "💾 覆蓋/補傳",
-                                        key=f"btn_up_{public_id}",
-                                        use_container_width=True,
-                                    ):
+                                    if st.button("💾 覆蓋/補傳", key=f"btn_up_{public_id}", use_container_width=True):
                                         if edit_cover_file:
                                             with st.spinner("正在上傳封面..."):
                                                 safe_filename = quote(book_title)
@@ -483,15 +469,12 @@ if has_cloud:
                                                     overwrite=True,
                                                 )
                                                 st.toast("封面已更新！")
+                                                st.cache_data.clear()
                                                 st.rerun()
                                         else:
                                             st.warning("請先選擇圖片檔案")
                                 with c_col2:
-                                    if st.button(
-                                        "🗑️ 刪除封面",
-                                        key=f"btn_del_cov_{public_id}",
-                                        use_container_width=True,
-                                    ):
+                                    if st.button("🗑️ 刪除封面", key=f"btn_del_cov_{public_id}", use_container_width=True):
                                         try:
                                             safe_filename = quote(book_title)
                                             cloudinary.uploader.destroy(
@@ -499,6 +482,7 @@ if has_cloud:
                                                 resource_type="image",
                                             )
                                             st.toast("封面已刪除！")
+                                            st.cache_data.clear()
                                             st.rerun()
                                         except Exception as e:
                                             st.error(f"刪除失敗：{e}")
@@ -506,21 +490,15 @@ if has_cloud:
         # ---------------- 模式 B：故事閱讀器頁面 ----------------
         else:
             selected_res = next(
-                (
-                    r
-                    for r in resources
-                    if r["public_id"] == st.session_state.selected_book_id
-                ),
+                (r for r in resources if r["public_id"] == st.session_state.selected_book_id),
                 None,
             )
             if selected_res:
                 book_url = selected_res["secure_url"]
-                book_name = unquote(
-                    selected_res["public_id"].replace("story_books/", "")
-                )
+                book_name = unquote(selected_res["public_id"].replace("story_books/", ""))
 
-                response = requests.get(book_url)
-                chapters = parse_docx_bytes(response.content)
+                file_bytes = fetch_docx_bytes(book_url)
+                chapters = parse_docx_bytes(file_bytes)
 
                 st.session_state.max_chapters = len(chapters)
                 st.session_state.chapter_titles = [ch["title"] for ch in chapters]
@@ -535,7 +513,7 @@ if has_cloud:
                 # ---------------- 側邊欄區域 ----------------
                 st.sidebar.divider()
 
-                # 1. 本章插圖（置於最上方）
+                # 1. 本章插圖
                 st.sidebar.caption(f"📖 本章插圖：{current_ch['title']}")
                 ch_key = f"{book_name}_{current_ch['title']}"
                 ch_cover_url = chapter_cover_map.get(ch_key)
@@ -545,9 +523,7 @@ if has_cloud:
                     st.sidebar.caption("📷 本章尚無插圖")
 
                 with st.sidebar.popover("🖼️ 上傳/更換本章插圖", use_container_width=True):
-                    ch_img_file = st.file_uploader(
-                        "選擇本章插圖", type=["png", "jpg", "jpeg"], key=f"ch_up_{ch_key}"
-                    )
+                    ch_img_file = st.file_uploader("選擇本章插圖", type=["png", "jpg", "jpeg"], key=f"ch_up_{ch_key}")
                     if st.button("💾 確認上傳本章插圖", key=f"btn_ch_up_{ch_key}", use_container_width=True):
                         if ch_img_file:
                             with st.spinner("正在上傳本章插圖..."):
@@ -558,11 +534,12 @@ if has_cloud:
                                     overwrite=True,
                                 )
                                 st.toast("本章插圖已更新！")
+                                st.cache_data.clear()
                                 st.rerun()
                         else:
                             st.warning("請先選擇圖片檔案")
 
-                # 2. 書籍封面（置於插圖下方）
+                # 2. 書籍封面
                 st.sidebar.divider()
                 st.sidebar.caption(f"📘 書籍封面：{book_name}")
                 reading_cover_url = cover_map.get(book_name)
@@ -576,7 +553,7 @@ if has_cloud:
                 st.sidebar.header("📥 檔案下載")
                 st.sidebar.download_button(
                     label="📥 下載本書 Word 檔",
-                    data=response.content,
+                    data=file_bytes,
                     file_name=book_name,
                     mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
                     use_container_width=True,
@@ -622,10 +599,7 @@ if has_cloud:
                 if target_line_idx >= total_lines:
                     target_line_idx = max(0, total_lines - 1)
 
-                with st.sidebar.popover(
-                    f"跳轉章節：{current_ch['title']}",
-                    use_container_width=True,
-                ):
+                with st.sidebar.popover(f"跳轉章節：{current_ch['title']}", use_container_width=True):
                     st.radio(
                         "請選擇要閱讀的章節：",
                         st.session_state.chapter_titles,
@@ -646,10 +620,7 @@ if has_cloud:
                 with nav_c2:
                     st.button(
                         "下一章 ➡️",
-                        disabled=(
-                            st.session_state.ch_index
-                            >= st.session_state.max_chapters - 1
-                        ),
+                        disabled=(st.session_state.ch_index >= st.session_state.max_chapters - 1),
                         use_container_width=True,
                         key="side_next",
                         on_click=next_chapter_cb,
@@ -673,20 +644,13 @@ if has_cloud:
                         index=current_book_idx,
                         key="sidebar_book_switch",
                     )
-                    if (
-                        book_options_map.get(selected_target_book)
-                        != st.session_state.selected_book_id
-                    ):
-                        st.session_state.selected_book_id = book_options_map[
-                            selected_target_book
-                        ]
+                    if book_options_map.get(selected_target_book) != st.session_state.selected_book_id:
+                        st.session_state.selected_book_id = book_options_map[selected_target_book]
                         st.session_state.ch_index = 0
                         st.session_state.reading_pct = 0
                         st.rerun()
 
-                if st.sidebar.button(
-                    "📚 返回圖書總書櫃", use_container_width=True
-                ):
+                if st.sidebar.button("📚 返回圖書總書櫃", use_container_width=True):
                     st.session_state.selected_book_id = None
                     st.session_state.reading_pct = 0
                     st.rerun()
@@ -703,7 +667,6 @@ if has_cloud:
                     )
 
                 st.header(f"《{book_name}》")
-
                 st.subheader(current_ch["title"])
                 st.divider()
 
@@ -719,10 +682,7 @@ if has_cloud:
                 with top_c2:
                     st.button(
                         "下一章 ➡️",
-                        disabled=(
-                            st.session_state.ch_index
-                            >= st.session_state.max_chapters - 1
-                        ),
+                        disabled=(st.session_state.ch_index >= st.session_state.max_chapters - 1),
                         use_container_width=True,
                         key="top_next",
                         on_click=next_chapter_cb,
@@ -765,10 +725,7 @@ if has_cloud:
                 with bot_c2:
                     st.button(
                         "下一章 ➡️",
-                        disabled=(
-                            st.session_state.ch_index
-                            >= st.session_state.max_chapters - 1
-                        ),
+                        disabled=(st.session_state.ch_index >= st.session_state.max_chapters - 1),
                         use_container_width=True,
                         key="bot_next",
                         on_click=next_chapter_cb,
