@@ -31,6 +31,8 @@ if "chapter_titles" not in st.session_state:
     st.session_state.chapter_titles = []
 if "reading_pct" not in st.session_state:
     st.session_state.reading_pct = 0
+if "scroll_to_top" not in st.session_state:
+    st.session_state.scroll_to_top = False
 
 # ---------------- 【左側欄順序 1】：視覺風格 ----------------
 st.sidebar.header("🎨 視覺風格")
@@ -136,26 +138,28 @@ def format_file_size(size_in_bytes):
         return f"{size_in_bytes / (1024 * 1024):.2f} MB"
 
 
-# 5. 安全狀態同步回呼函式
+# 5. 安全狀態同步回呼函式（加入自動滾動回頂部標記）
 def prev_chapter_cb():
     if st.session_state.ch_index > 0:
         st.session_state.ch_index -= 1
         st.session_state.reading_pct = 0
+        st.session_state.scroll_to_top = True
 
 
 def next_chapter_cb():
     if st.session_state.ch_index < st.session_state.max_chapters - 1:
         st.session_state.ch_index += 1
         st.session_state.reading_pct = 0
+        st.session_state.scroll_to_top = True
 
 
 def on_radio_change_cb():
-    # 同時相容頂部與側邊欄的選單 key
-    selected = st.session_state.get("top_popover_radio") or st.session_state.get("sb_popover_radio")
+    selected = st.session_state.get("sb_popover_radio")
     titles = st.session_state.get("chapter_titles", [])
     if selected in titles:
         st.session_state.ch_index = titles.index(selected)
         st.session_state.reading_pct = 0
+        st.session_state.scroll_to_top = True
 
 
 def on_slider_change_cb():
@@ -447,6 +451,7 @@ if has_cloud:
                                     st.session_state.selected_book_id = public_id
                                     st.session_state.ch_index = 0
                                     st.session_state.reading_pct = 0
+                                    st.session_state.scroll_to_top = True
                                     st.rerun()
                             with b2:
                                 if st.button("🗑️ 刪除", key=f"del_{public_id}", use_container_width=True):
@@ -660,6 +665,7 @@ if has_cloud:
                         st.session_state.selected_book_id = book_options_map[selected_target_book]
                         st.session_state.ch_index = 0
                         st.session_state.reading_pct = 0
+                        st.session_state.scroll_to_top = True
                         st.rerun()
 
                 if st.sidebar.button("📚 返回圖書總書櫃", use_container_width=True):
@@ -668,12 +674,25 @@ if has_cloud:
                     st.rerun()
 
                 # ---------------- 文章閱讀主區域 ----------------
+                # 若觸發換章，執行 JS 將畫面拉至最頂部
+                if st.session_state.scroll_to_top:
+                    st.markdown(
+                        """
+                        <script>
+                            window.scrollTo(0, 0);
+                            var mainSec = window.parent.document.querySelector('.main');
+                            if (mainSec) { mainSec.scrollTop = 0; }
+                        </script>
+                        """,
+                        unsafe_allow_html=True
+                    )
+                    st.session_state.scroll_to_top = False
+
                 st.header(f"《{book_name}》")
                 st.subheader(current_ch["title"])
                 st.divider()
 
-                # 頂部控制列：包含「上一章」、「快速選章 Popover」、「下一章」
-                top_c1, top_c2, top_c3 = st.columns([1, 2, 1])
+                top_c1, top_c2 = st.columns(2)
                 with top_c1:
                     st.button(
                         "⬅️ 上一章",
@@ -683,16 +702,6 @@ if has_cloud:
                         on_click=prev_chapter_cb,
                     )
                 with top_c2:
-                    # 補回頂部的文章內跳章選單
-                    with st.popover(f"📑 快速跳章 ({st.session_state.ch_index + 1}/{st.session_state.max_chapters})", use_container_width=True):
-                        st.radio(
-                            "請選擇要閱讀的章節：",
-                            st.session_state.chapter_titles,
-                            index=st.session_state.ch_index,
-                            key="top_popover_radio",
-                            on_change=on_radio_change_cb,
-                        )
-                with top_c3:
                     st.button(
                         "下一章 ➡️",
                         disabled=(st.session_state.ch_index >= st.session_state.max_chapters - 1),
