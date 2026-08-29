@@ -138,7 +138,7 @@ def format_file_size(size_in_bytes):
         return f"{size_in_bytes / (1024 * 1024):.2f} MB"
 
 
-# 5. 安全狀態同步回呼函式（加入自動滾動回頂部標記）
+# 5. 安全狀態同步回呼函式
 def prev_chapter_cb():
     if st.session_state.ch_index > 0:
         st.session_state.ch_index -= 1
@@ -674,20 +674,6 @@ if has_cloud:
                     st.rerun()
 
                 # ---------------- 文章閱讀主區域 ----------------
-                # 若觸發換章，執行 JS 將畫面拉至最頂部
-                if st.session_state.scroll_to_top:
-                    st.markdown(
-                        """
-                        <script>
-                            window.scrollTo(0, 0);
-                            var mainSec = window.parent.document.querySelector('.main');
-                            if (mainSec) { mainSec.scrollTop = 0; }
-                        </script>
-                        """,
-                        unsafe_allow_html=True
-                    )
-                    st.session_state.scroll_to_top = False
-
                 st.header(f"《{book_name}》")
                 st.subheader(current_ch["title"])
                 st.divider()
@@ -711,6 +697,24 @@ if has_cloud:
                     )
 
                 st.divider()
+
+                # 設定第一個內文錨點（第一行專屬）
+                st.markdown('<div id="first-line-anchor"></div>', unsafe_allow_html=True)
+
+                # 若觸發換章，執行 JS 直接跳轉對齊第一行的錨點
+                if st.session_state.scroll_to_top:
+                    st.markdown(
+                        """
+                        <script>
+                            var anchor = window.parent.document.getElementById('first-line-anchor');
+                            if (anchor) {
+                                anchor.scrollIntoView({ behavior: 'auto', block: 'start' });
+                            }
+                        </script>
+                        """,
+                        unsafe_allow_html=True
+                    )
+                    st.session_state.scroll_to_top = False
 
                 # 逐段渲染內文：使用 HTML <p class="story-paragraph"> 強制分開段落
                 for idx, line in enumerate(content_lines):
