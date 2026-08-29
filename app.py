@@ -41,7 +41,7 @@ st.session_state.theme_mode = st.sidebar.radio(
     key="theme_radio",
 )
 
-# 3. 高對比度與主題顏色 CSS 設定（含專屬段落間距設定）
+# 3. 高對比度與主題顏色 CSS 設定
 if st.session_state.theme_mode == "🌙 黑底模式":
     bg_col, sidebar_bg, card_bg, border_col, text_col, button_bg = (
         "#0e1117",
@@ -102,7 +102,7 @@ css_style = f"""
         font-size: 1.15rem !important;
         line-height: 1.95 !important;
         margin-bottom: 1.25rem !important;
-        white-space: pre-wrap !important; /* 保留首行縮進與空格 */
+        white-space: pre-wrap !important;
         word-break: break-word !important;
     }}
 </style>
@@ -150,7 +150,8 @@ def next_chapter_cb():
 
 
 def on_radio_change_cb():
-    selected = st.session_state.get("sb_popover_radio")
+    # 同時相容頂部與側邊欄的選單 key
+    selected = st.session_state.get("top_popover_radio") or st.session_state.get("sb_popover_radio")
     titles = st.session_state.get("chapter_titles", [])
     if selected in titles:
         st.session_state.ch_index = titles.index(selected)
@@ -230,7 +231,6 @@ def parse_docx_bytes(file_bytes):
         else:
             if not current_chapter["title"]:
                 current_chapter["title"] = "前言/序章"
-            # 確保每一個段落（包括內容文字與空行）都能保留，以形成清晰分行
             current_chapter["content"].append(text)
 
     if current_chapter["title"] or current_chapter["content"]:
@@ -672,7 +672,8 @@ if has_cloud:
                 st.subheader(current_ch["title"])
                 st.divider()
 
-                top_c1, top_c2 = st.columns(2)
+                # 頂部控制列：包含「上一章」、「快速選章 Popover」、「下一章」
+                top_c1, top_c2, top_c3 = st.columns([1, 2, 1])
                 with top_c1:
                     st.button(
                         "⬅️ 上一章",
@@ -682,6 +683,16 @@ if has_cloud:
                         on_click=prev_chapter_cb,
                     )
                 with top_c2:
+                    # 補回頂部的文章內跳章選單
+                    with st.popover(f"📑 快速跳章 ({st.session_state.ch_index + 1}/{st.session_state.max_chapters})", use_container_width=True):
+                        st.radio(
+                            "請選擇要閱讀的章節：",
+                            st.session_state.chapter_titles,
+                            index=st.session_state.ch_index,
+                            key="top_popover_radio",
+                            on_change=on_radio_change_cb,
+                        )
+                with top_c3:
                     st.button(
                         "下一章 ➡️",
                         disabled=(st.session_state.ch_index >= st.session_state.max_chapters - 1),
