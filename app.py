@@ -8,6 +8,7 @@ import cloudinary.uploader
 import docx
 import requests
 import streamlit as st
+import streamlit.components.v1 as components
 
 # 1. 頁面基本配置
 st.set_page_config(
@@ -31,8 +32,8 @@ if "chapter_titles" not in st.session_state:
     st.session_state.chapter_titles = []
 if "reading_pct" not in st.session_state:
     st.session_state.reading_pct = 0
-if "scroll_to_top" not in st.session_state:
-    st.session_state.scroll_to_top = False
+if "scroll_to_first_line" not in st.session_state:
+    st.session_state.scroll_to_first_line = False
 
 # ---------------- 【左側欄順序 1】：視覺風格 ----------------
 st.sidebar.header("🎨 視覺風格")
@@ -143,14 +144,14 @@ def prev_chapter_cb():
     if st.session_state.ch_index > 0:
         st.session_state.ch_index -= 1
         st.session_state.reading_pct = 0
-        st.session_state.scroll_to_top = True
+        st.session_state.scroll_to_first_line = True
 
 
 def next_chapter_cb():
     if st.session_state.ch_index < st.session_state.max_chapters - 1:
         st.session_state.ch_index += 1
         st.session_state.reading_pct = 0
-        st.session_state.scroll_to_top = True
+        st.session_state.scroll_to_first_line = True
 
 
 def on_radio_change_cb():
@@ -159,7 +160,7 @@ def on_radio_change_cb():
     if selected in titles:
         st.session_state.ch_index = titles.index(selected)
         st.session_state.reading_pct = 0
-        st.session_state.scroll_to_top = True
+        st.session_state.scroll_to_first_line = True
 
 
 def on_slider_change_cb():
@@ -451,7 +452,7 @@ if has_cloud:
                                     st.session_state.selected_book_id = public_id
                                     st.session_state.ch_index = 0
                                     st.session_state.reading_pct = 0
-                                    st.session_state.scroll_to_top = True
+                                    st.session_state.scroll_to_first_line = True
                                     st.rerun()
                             with b2:
                                 if st.button("🗑️ 刪除", key=f"del_{public_id}", use_container_width=True):
@@ -665,7 +666,7 @@ if has_cloud:
                         st.session_state.selected_book_id = book_options_map[selected_target_book]
                         st.session_state.ch_index = 0
                         st.session_state.reading_pct = 0
-                        st.session_state.scroll_to_top = True
+                        st.session_state.scroll_to_first_line = True
                         st.rerun()
 
                 if st.sidebar.button("📚 返回圖書總書櫃", use_container_width=True):
@@ -698,23 +699,8 @@ if has_cloud:
 
                 st.divider()
 
-                # 設定第一個內文錨點（第一行專屬）
-                st.markdown('<div id="first-line-anchor"></div>', unsafe_allow_html=True)
-
-                # 若觸發換章，執行 JS 直接跳轉對齊第一行的錨點
-                if st.session_state.scroll_to_top:
-                    st.markdown(
-                        """
-                        <script>
-                            var anchor = window.parent.document.getElementById('first-line-anchor');
-                            if (anchor) {
-                                anchor.scrollIntoView({ behavior: 'auto', block: 'start' });
-                            }
-                        </script>
-                        """,
-                        unsafe_allow_html=True
-                    )
-                    st.session_state.scroll_to_top = False
+                # 在文章內容最開頭設置第一行錨點
+                st.markdown('<div id="story-first-line"></div>', unsafe_allow_html=True)
 
                 # 逐段渲染內文：使用 HTML <p class="story-paragraph"> 強制分開段落
                 for idx, line in enumerate(content_lines):
@@ -728,6 +714,24 @@ if has_cloud:
                     else:
                         # 非空行獨立封裝為 HTML 段落
                         st.markdown(f'<p class="story-paragraph">{line_str}</p>', unsafe_allow_html=True)
+
+                # 透過 components.html 在渲染完成後發送滾動指令至外層視窗
+                if st.session_state.scroll_to_first_line:
+                    components.html(
+                        """
+                        <script>
+                            setTimeout(function() {
+                                var target = window.parent.document.getElementById('story-first-line');
+                                if (target) {
+                                    target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                                }
+                            }, 150);
+                        </script>
+                        """,
+                        height=0,
+                        width=0
+                    )
+                    st.session_state.scroll_to_first_line = False
 
                 st.divider()
 
