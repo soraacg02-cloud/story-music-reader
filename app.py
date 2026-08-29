@@ -355,11 +355,18 @@ if has_cloud:
                             with st.spinner("正在覆蓋雲端檔案與更新時間..."):
                                 try:
                                     safe_filename = quote(target_to_overwrite)
+                                    
+                                    # 先強制銷毀舊檔案，以重置 created_at 時間戳記
                                     try:
-                                        cloudinary.uploader.destroy(f"story_books/{safe_filename}", resource_type="raw", invalidate=True)
+                                        cloudinary.uploader.destroy(
+                                            f"story_books/{safe_filename}", 
+                                            resource_type="raw", 
+                                            invalidate=True
+                                        )
                                     except Exception:
                                         pass
 
+                                    # 重新上傳故事檔案
                                     cloudinary.uploader.upload(
                                         new_file,
                                         resource_type="raw",
@@ -367,13 +374,16 @@ if has_cloud:
                                         overwrite=True,
                                         invalidate=True
                                     )
+
                                     if cover_file:
                                         cloudinary.uploader.upload(
                                             cover_file,
                                             resource_type="image",
                                             public_id=f"story_covers/{safe_filename}",
                                             overwrite=True,
+                                            invalidate=True
                                         )
+
                                     st.sidebar.success(f"《{target_to_overwrite}》已成功覆蓋並更新上傳日期！")
                                     st.cache_data.clear()
                                     st.rerun()
@@ -699,24 +709,23 @@ if has_cloud:
 
                 st.divider()
 
-                # 在文章內容最開頭設置第一行錨點
+                # 設置文章第一行的置頂錨點
                 st.markdown('<div id="story-first-line"></div>', unsafe_allow_html=True)
 
-                # 逐段渲染內文：使用 HTML <p class="story-paragraph"> 強制分開段落
+                # 逐段渲染內文，同時替每一行設定對應的獨立錨點 ID
                 for idx, line in enumerate(content_lines):
                     anchor_html = f'<div id="line-anchor-{idx}"></div>'
                     st.markdown(anchor_html, unsafe_allow_html=True)
                     
                     line_str = str(line)
                     if line_str.strip() == "":
-                        # 空行增加適當距離
                         st.markdown('<div style="height: 1rem;"></div>', unsafe_allow_html=True)
                     else:
-                        # 非空行獨立封裝為 HTML 段落
                         st.markdown(f'<p class="story-paragraph">{line_str}</p>', unsafe_allow_html=True)
 
-                # 透過 components.html 在渲染完成後發送滾動指令至外層視窗
+                # 執行 JS 滾動處理邏輯
                 if st.session_state.scroll_to_first_line:
+                    # 1. 換章節 -> 滾動至第一行錨點
                     components.html(
                         """
                         <script>
@@ -732,6 +741,22 @@ if has_cloud:
                         width=0
                     )
                     st.session_state.scroll_to_first_line = False
+                elif pct_value > 0:
+                    # 2. 移動快轉拉桿 -> 即時連動滾動至算出的目標段落錨點
+                    components.html(
+                        f"""
+                        <script>
+                            setTimeout(function() {{
+                                var target = window.parent.document.getElementById('line-anchor-{target_line_idx}');
+                                if (target) {{
+                                    target.scrollIntoView({{ behavior: 'smooth', block: 'start' }});
+                                }}
+                            }}, 150);
+                        </script>
+                        """,
+                        height=0,
+                        width=0
+                    )
 
                 st.divider()
 
