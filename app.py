@@ -41,7 +41,7 @@ st.session_state.theme_mode = st.sidebar.radio(
     key="theme_radio",
 )
 
-# 3. 高對比度與主題顏色 CSS 設定（優化選擇器，防版面錯亂）
+# 3. 高對比度與主題顏色 CSS 設定（含專屬段落間距設定）
 if st.session_state.theme_mode == "🌙 黑底模式":
     bg_col, sidebar_bg, card_bg, border_col, text_col, button_bg = (
         "#0e1117",
@@ -77,7 +77,7 @@ css_style = f"""
         border-radius: 12px; 
     }}
 
-    /* 按鈕樣式限制（避免干擾內部彈窗） */
+    /* 按鈕樣式限制 */
     div.stButton > button {{ 
         background-color: {button_bg} !important; 
         color: {text_col} !important; 
@@ -96,12 +96,14 @@ css_style = f"""
         color: {text_col} !important; 
     }}
 
-    /* 文章內文專屬樣式 */
-    .story-text {{
+    /* 文章內文專屬樣式：控制句子/段落間距與行高 */
+    .story-paragraph {{
         color: {text_col} !important;
-        font-size: 1.1rem;
-        line-height: 1.8;
-        margin-bottom: 0.8rem;
+        font-size: 1.15rem !important;
+        line-height: 1.95 !important;
+        margin-bottom: 1.25rem !important;
+        white-space: pre-wrap !important; /* 保留首行縮進與空格 */
+        word-break: break-word !important;
     }}
 </style>
 """
@@ -205,7 +207,6 @@ def parse_docx_bytes(file_bytes):
 
     for p in doc.paragraphs:
         text = p.text.rstrip()
-
         style_name = ""
         if p.style and hasattr(p.style, "name") and p.style.name:
             style_name = p.style.name.lower()
@@ -229,8 +230,8 @@ def parse_docx_bytes(file_bytes):
         else:
             if not current_chapter["title"]:
                 current_chapter["title"] = "前言/序章"
-            if clean_text != "":
-                current_chapter["content"].append(text)
+            # 確保每一個段落（包括內容文字與空行）都能保留，以形成清晰分行
+            current_chapter["content"].append(text)
 
     if current_chapter["title"] or current_chapter["content"]:
         chapters.append(current_chapter)
@@ -239,7 +240,7 @@ def parse_docx_bytes(file_bytes):
         chapters.append({
             "title": "全一冊",
             "music_url": "",
-            "content": [p.text for p in doc.paragraphs if p.text.strip() != ""]
+            "content": [p.text for p in doc.paragraphs]
         })
 
     return chapters
@@ -691,14 +692,18 @@ if has_cloud:
 
                 st.divider()
 
-                # 逐段渲染內文，並保留分行與樣式
+                # 逐段渲染內文：使用 HTML <p class="story-paragraph"> 強制分開段落
                 for idx, line in enumerate(content_lines):
                     anchor_html = f'<div id="line-anchor-{idx}"></div>'
                     st.markdown(anchor_html, unsafe_allow_html=True)
-                    if line.strip() == "":
-                        st.markdown("<br>", unsafe_allow_html=True)
+                    
+                    line_str = str(line)
+                    if line_str.strip() == "":
+                        # 空行增加適當距離
+                        st.markdown('<div style="height: 1rem;"></div>', unsafe_allow_html=True)
                     else:
-                        st.markdown(f'<p class="story-text">{line}</p>', unsafe_allow_html=True)
+                        # 非空行獨立封裝為 HTML 段落
+                        st.markdown(f'<p class="story-paragraph">{line_str}</p>', unsafe_allow_html=True)
 
                 st.divider()
 
