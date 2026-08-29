@@ -1,6 +1,6 @@
 import io
 import re
-from datetime import datetime
+from datetime import datetime, timedelta
 from urllib.parse import quote, unquote
 import cloudinary
 import cloudinary.api
@@ -434,13 +434,14 @@ if has_cloud:
                     public_id = res["public_id"]
                     book_title = unquote(public_id.replace("story_books/", ""))
                     created_at_str = res.get("created_at", "")
-                    date_display = (
-                        datetime.strptime(
-                            created_at_str, "%Y-%m-%dT%H:%M:%SZ"
-                        ).strftime("%Y-%m-%d %H:%M")
-                        if created_at_str
-                        else "未知時間"
-                    )
+                    
+                    # 轉換為台灣時間 (UTC+8) 顯示
+                    if created_at_str:
+                        utc_time = datetime.strptime(created_at_str, "%Y-%m-%dT%H:%M:%SZ")
+                        local_time = utc_time + timedelta(hours=8)
+                        date_display = local_time.strftime("%Y-%m-%d %H:%M")
+                    else:
+                        date_display = "未知時間"
 
                     file_bytes_size = res.get("bytes", 0)
                     size_display = format_file_size(file_bytes_size)
