@@ -1,9 +1,10 @@
 import io
 import re
-import urllib.parse
+import urllib.request
 import streamlit as st
 import docx
-from cloudinary import Api, CloudinaryImage
+import cloudinary
+import cloudinary.api
 
 # ==========================================
 # 1. 頁面基本配置 (Page Config)
@@ -22,8 +23,8 @@ def apply_custom_css(theme_mode):
     if theme_mode == "暗黑模式 (Dark)":
         bg_color = "#121212"
         text_color = "#E0E0E0"
-        card_bg = "#1E1E1E"
-        border_color = "#333333"
+        card_bg = "#181818"
+        border_color = "#2A2A2A"
         accent_color = "#4DA6FF"
     else:  # 明亮模式 (Light)
         bg_color = "#F8F9FA"
@@ -41,7 +42,7 @@ def apply_custom_css(theme_mode):
         font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, "Noto Sans TC", sans-serif;
     }}
     
-    /* 文章閱讀內文控制 */
+    /* 文章閱讀內文控制容器 */
     .story-container {{
         background-color: {card_bg};
         padding: 2.5rem;
@@ -51,7 +52,7 @@ def apply_custom_css(theme_mode):
         margin-bottom: 2rem;
     }}
     
-    /* 修正段落上下距，防止預設間距過大 */
+    /* 修正段落上下距，精準還原單行間距 */
     .story-line {{
         margin: 0;
         padding: 0;
@@ -61,7 +62,7 @@ def apply_custom_css(theme_mode):
         word-wrap: break-word;
     }}
     
-    /* Word 檔案空行的等比例區塊 */
+    /* Word 檔案空行/Enter 間距比例區塊 */
     .empty-line-spacer {{
         height: 1.25rem;
         width: 100%;
@@ -78,7 +79,7 @@ def apply_custom_css(theme_mode):
     }}
     </style>
     """
-    st.markdown(custom_css, unsafe_unsafe_html=True if hasattr(st, "unsafe_html") else True)
+    st.markdown(custom_css, unsafe_allow_html=True)
 
 # ==========================================
 # 3. Cloudinary 與 檔案解析 (Cached Functions)
@@ -87,14 +88,15 @@ def apply_custom_css(theme_mode):
 def fetch_cloudinary_catalog():
     """從 Cloudinary 抓取所有 docx 檔案清單"""
     try:
-        # 從 st.secrets 取得設定，若本地測試可替換為環境變數
-        api = Api(
+        # 設定 Cloudinary API 憑證 (已修復舊版 Api 匯入問題)
+        cloudinary.config(
             cloud_name=st.secrets["cloudinary"]["cloud_name"],
             api_key=st.secrets["cloudinary"]["api_key"],
             api_secret=st.secrets["cloudinary"]["api_secret"]
         )
-        # 搜尋 raw 類型的 docx 檔案
-        resources = api.resources(type="upload", resource_type="raw", max_results=500)
+        
+        # 抓取資源類型為 raw 的所有 .docx 檔案
+        resources = cloudinary.api.resources(type="upload", resource_type="raw", max_results=500)
         file_list = []
         for res in resources.get("resources", []):
             filename = res.get("public_id", "")
@@ -111,7 +113,6 @@ def fetch_cloudinary_catalog():
 @st.cache_data(ttl=3600)
 def fetch_docx_bytes(url):
     """下載 DOCX 檔案位元組"""
-    import urllib.request
     try:
         req = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0'})
         with urllib.request.urlopen(req) as response:
@@ -122,8 +123,8 @@ def fetch_docx_bytes(url):
 
 def parse_docx_bytes(file_bytes):
     """
-    【重點修正】：精準解析 Word 檔案內容與空行
-    不刪除 clean_text == "" 的空行段落，保持與 Word 的 Enter 數量完全一致
+    【核心排版修復】：精準解析 Word 檔案內容與空行
+    完整保留 text 為空字串（按 Enter 產生）的段落，維持與原始 Word 文件完全一致的空間間距
     """
     doc = docx.Document(io.BytesIO(file_bytes))
     chapters = []
@@ -133,7 +134,7 @@ def parse_docx_bytes(file_bytes):
     chapter_regex = re.compile(r"^第\s*[0-9一二三四五六七八九十百千]+\s*章")
 
     for p in doc.paragraphs:
-        text = p.text.rstrip("\r\n") # 保留結尾，僅移除硬換行符
+        text = p.text.rstrip("\r\n")  # 保留內容，僅清除末尾換行符
 
         style_name = ""
         if p.style and hasattr(p.style, "name") and p.style.name:
@@ -141,7 +142,7 @@ def parse_docx_bytes(file_bytes):
 
         clean_text = text.strip()
 
-        # 判斷是否為標題
+        # 判斷是否為章節標題
         is_heading = (
             ("heading" in style_name or "標題" in style_name) and clean_text != ""
         ) or bool(chapter_regex.match(clean_text))
@@ -155,20 +156,19 @@ def parse_docx_bytes(file_bytes):
                 "content": [],
             }
         elif clean_text.startswith("http://") or clean_text.startswith("https://"):
-            # 如果整行是一個音樂/音訊連結
+            # 如果整行是音樂/音訊網址，設為章節背景音訊
             current_chapter["music_url"] = clean_text
         else:
             if not current_chapter["title"]:
                 current_chapter["title"] = "前言/序章"
             
-            # 【關鍵點】：即便 text.strip() 是空字串，也存入 content 中
-            # 這樣就能保留 Word 當中按下的每一個 Enter！
+            # 【關鍵修復點】：保留空字串，以反映 Word 當中的 Enter 空行
             current_chapter["content"].append(text)
 
     if current_chapter["title"] or current_chapter["content"]:
         chapters.append(current_chapter)
 
-    # 備用機制：若完全沒解析出章節，則作為單一檔案讀取
+    # 若未偵測到章節標題，預設作為單一章節
     if not chapters:
         chapters.append({
             "title": "全一冊",
@@ -268,7 +268,7 @@ def main():
             st.session_state.selected_line_idx = 0
             st.rerun()
 
-        # 精準段落跳轉 slider
+        # 精準段落跳轉 Slider
         content_lines = current_ch["content"]
         if content_lines:
             st.subheader("🎯 段落定位")
@@ -295,9 +295,9 @@ def main():
         # 建立 HTML 錨點 (Anchor) 供平滑滾動跳轉
         st.markdown(f'<div id="line-anchor-{idx}"></div>', unsafe_allow_html=True)
         
-        # 【關鍵解析呈現】：判斷是否為 Word 中的 Enter 空行
+        # 【排版關鍵】：判斷是否為 Word 中的 Enter 空行
         if line.strip() == "":
-            # 渲染一個專屬高度的空白 Spacer 區塊，精準還原 Word 空行距離
+            # 渲染一個固定高度的空白 spacer，完美還原 Word 連續 Enter 的空行數
             st.markdown("<div class='empty-line-spacer'></div>", unsafe_allow_html=True)
         else:
             # 渲染正常文字段落
@@ -305,7 +305,7 @@ def main():
 
     st.markdown("</div>", unsafe_allow_html=True)
 
-    # JS 自動平滑滾動至 slider 所選取的段落
+    # JS 自動平滑滾動至 slider 所選取的段落（具備重試機制，確保 DOM 載入完畢）
     if st.session_state.selected_line_idx > 0:
         target_line_idx = st.session_state.selected_line_idx
         js_scroll = f"""
@@ -347,6 +347,6 @@ def main():
 if __name__ == "__main__":
     # 確保 Secrets 安全設定提示
     if "cloudinary" not in st.secrets:
-        st.warning("⚠️ 請先在 Streamlit Secrets 設定檔中配置 Cloudinary API 金鑰（st.secrets['cloudinary']）。")
+        st.warning("⚠️ 請先在 Streamlit Cloud 的 Secrets 設定檔中配置 Cloudinary API 金鑰（st.secrets['cloudinary']）。")
     else:
         main()
